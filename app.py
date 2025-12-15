@@ -176,16 +176,15 @@ if st.session_state.df is not None:
             import joblib
             model = joblib.load('model.pkl')
             
+            if "lst_models_predictions" not in st.session_state:
+                st.session_state.lst_models_predictions = []
 
-            if str(model) not in st.session_state.lst_models_predctions:
+            if str(model) not in st.session_state.lst_models_predictions:
                 
-                st.session_state.lst_models_predctions.append(str(model))
+                st.session_state.lst_models_predictions.append(str(model))
                 st.session_state.lst_models.append(str(model))
                 if str(model) not in st.session_state.models_with_eval.keys():
                     st.session_state.models_with_eval[str(model)] = []
-
-
-                
 
                 # Predictions
                 if st.session_state["split_sets"] == "Train, Validation, and Test":
@@ -610,7 +609,7 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
 
                     # Show ROC Curve as plot
                     if "AUC Score" in evaluation_metric:
-                        from sklearn.metrics import plot_roc_curve
+                        from sklearn.metrics import RocCurveDisplay
                         st.markdown("### ROC Curve")
                         new_line()
                         
@@ -619,21 +618,21 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
                             # Show the ROC curve plot without any columns
                             col1, col2, col3 = st.columns([0.2, 1, 0.2])
                             fig, ax = plt.subplots()
-                            plot_roc_curve(model, X_train, y_train, ax=ax)
-                            plot_roc_curve(model, X_val, y_val, ax=ax)
-                            plot_roc_curve(model, X_test, y_test, ax=ax)
+                            RocCurveDisplay.from_estimator(model, X_train, y_train, ax=ax)
+                            RocCurveDisplay.from_estimator(model, X_val, y_val, ax=ax)
+                            RocCurveDisplay.from_estimator(model, X_test, y_test, ax=ax)
                             ax.legend(['Train', 'Validation', 'Test'])
-                            col2.pyplot(fig, legend=True)
+                            col2.pyplot(fig)
 
                         elif st.session_state["split_sets"] == "Train and Test":
 
                             # Show the ROC curve plot without any columns
                             col1, col2, col3 = st.columns([0.2, 1, 0.2])
                             fig, ax = plt.subplots()
-                            plot_roc_curve(model, X_train, y_train, ax=ax)
-                            plot_roc_curve(model, X_test, y_test, ax=ax)
+                            RocCurveDisplay.from_estimator(model, X_train, y_train, ax=ax)
+                            RocCurveDisplay.from_estimator(model, X_test, y_test, ax=ax)
                             ax.legend(['Train', 'Test'])
-                            col2.pyplot(fig, legend=True)
+                            col2.pyplot(fig)
 
                             
 

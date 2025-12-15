@@ -80,7 +80,7 @@ def handle_missing_values(df):
                 # All Categorical Features
                 if "All Categorical Feature (Default Feature)" in fill_feat:
                     fill_feat.remove("All Categorical Feature (Default Feature)")
-                    fill_feat += df.select_dtypes(include=np.object).columns.tolist()
+                    fill_feat += df.select_dtypes(include=object).columns.tolist()
 
                 
                 # Drop Rows
@@ -117,7 +117,7 @@ df[{fill_feat}] = num_imputer.fit_transform(df[{fill_feat}])
                     num_imputer = SimpleImputer(strategy='mean')
                     df[fill_feat] = num_imputer.fit_transform(df[fill_feat])
 
-                    null_cat = df[missing_df_cols].select_dtypes(include=np.object).columns.tolist()
+                    null_cat = df[missing_df_cols].select_dtypes(include=object).columns.tolist()
                     if null_cat:
                         st.session_state.all_the_process += f"""
 # Fill with Mode
@@ -129,7 +129,7 @@ df[{null_cat}] = cat_imputer.fit_transform(df[{null_cat}])
                         df[null_cat] = cat_imputer.fit_transform(df[null_cat])
 
                     st.session_state['df'] = df
-                    if df.select_dtypes(include=np.object).columns.tolist():
+                    if df.select_dtypes(include=object).columns.tolist():
                         st.success(f"The Columns **`{fill_feat}`** has been filled with the mean. And the categorical columns **`{null_cat}`** has been filled with the mode.")
                     else:
                         st.success(f"The Columns **`{fill_feat}`** has been filled with the mean.")
@@ -147,7 +147,7 @@ df[{fill_feat}] = pd.DataFrame(num_imputer.fit_transform(df[{fill_feat}]), colum
                     num_imputer = SimpleImputer(strategy='median')
                     df[fill_feat] = pd.DataFrame(num_imputer.fit_transform(df[fill_feat]), columns=df[fill_feat].columns)
 
-                    null_cat = df[missing_df_cols].select_dtypes(include=np.object).columns.tolist()
+                    null_cat = df[missing_df_cols].select_dtypes(include=object).columns.tolist()
                     if null_cat:
                         st.session_state.all_the_process += f"""
 # Fill with Mode
@@ -159,7 +159,7 @@ df[{null_cat}] = cat_imputer.fit_transform(df[{null_cat}])
                         df[null_cat] = cat_imputer.fit_transform(df[null_cat])
 
                     st.session_state['df'] = df
-                    if df.select_dtypes(include=np.object).columns.tolist():
+                    if df.select_dtypes(include=object).columns.tolist():
                         st.success(f"The Columns **`{fill_feat}`** has been filled with the Median. And the categorical columns **`{null_cat}`** has been filled with the mode.")
                     else:
                         st.success(f"The Columns **`{fill_feat}`** has been filled with the Median.")
