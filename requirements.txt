@@ -2,11 +2,11 @@ catboost
 joblib==1.1.1
 lightgbm>=4.0.0
 matplotlib
-numpy
+numpy<2.0
 pandas
 Pillow
 requests==2.28.1
-scikit_learn
+scikit-learn==1.4.2
 seaborn
 streamlit==1.22.0
 xgboost>=2.0.0
