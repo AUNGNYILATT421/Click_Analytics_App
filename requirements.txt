@@ -11,6 +11,6 @@ scikit_learn
 seaborn
 streamlit==1.22.0
 xgboost>=2.0.0
-plotly==5.9.0
+plotly>=5.18.0
 openpyxl
 WordCloud
