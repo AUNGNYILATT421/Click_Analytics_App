@@ -685,5 +685,5 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
         if col2.button("⛔ Reset", use_container_width=True, key='reset'):
             st.session_state.df = None
             st.session_state.clear()
-            st.experimental_rerun()
+            st.rerun()
 
