@@ -285,7 +285,7 @@ df.drop(columns={col_to_delete}, inplace=True)
                     try:
                         wordcloud = WordCloud(width=800, height=400).generate(text_data)
                         fig, ax = plt.subplots()
-                        ax.imshow(wordcloud.to_array(), interpolation='bilinear')
+                        ax.imshow(wordcloud.to_image(), interpolation='bilinear')
                         ax.axis('off')
                         st.pyplot(fig)
                     except ValueError as e:
