@@ -79,7 +79,7 @@ X_val, X_test, y_val, y_test = train_test_split(X_rem, y_rem, train_size= {val_s
                 with col1:
                     st.subheader("Train")
                     st.write(f"X Train Shape: {X_train.shape}")
-                    st.write(f"Y Train Shape: {y_train.shape}")
+                    st.write(f"y Train Shape: {y_train.shape}")
                     train = pd.concat([X_train, y_train], axis=1)
                     train_csv = train.to_csv(index=False).encode("utf-8")
                     st.download_button("Download Train Set", train_csv, "train.csv", "text/csv", key="train3")
