@@ -87,11 +87,6 @@ if st.session_state.df is None:
         if url:
             df = load_data(url)
             st.session_state.df = df
-
-
-# Sidebar       
-with st.sidebar:
-    st.image("./assets/logo.png",   width=True)
     
     
 # Dataframe
