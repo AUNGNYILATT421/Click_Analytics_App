@@ -1,11 +1,6 @@
 # 📊 Click Analytics App
 
-An interactive **Data Analytics & Machine Learning web application** built with **Streamlit**, designed to perform end-to-end data analysis — from data loading and EDA to preprocessing, model training, evaluation, and prediction.
-
-🔗 **Live App:**  
-👉 https://clickanalyticsapp-ezio.streamlit.app/
-
----
+**A web app for exploratory data analytics**
 
 ## 🚀 Features
 
