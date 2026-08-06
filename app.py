@@ -32,7 +32,7 @@ initial_state()
 
 # Logo 
 col1, col2, col3 = st.columns([0.25,1,0.25])
-col2.image("./assets/logo.png", use_column_width=True)
+col2.image("./assets/logo.png", use_container_width=True)
 new_line(2)
 
 # Description
