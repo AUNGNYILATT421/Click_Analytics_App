@@ -44,18 +44,29 @@ def display_transformation_options(st, df):
                                  help="Select the transformation you want to apply.", 
                                  key="transformation")
 
+        # Features with missing values can't be transformed
+        missing_cols = [col for col in trans_feat if df[col].isnull().any()]
+        if missing_cols:
+            st.warning(f"The Features **`{missing_cols}`** have missing values, so they can't be transformed yet. Please handle them in the **⚠️ Missing Values** section first.")
+
+        # The log isn't defined for negative numbers
+        negative_cols = []
+        if trans == "Log Transformation":
+            negative_cols = [col for col in trans_feat if (df[col] < 0).any()]
+            if negative_cols:
+                st.warning(f"The Features **`{negative_cols}`** have negative values, and the log isn't defined for negative numbers. Please choose another transformation, such as **Cube Root Transformation**, or select other features.")
+
         # Apply Transformation
         if trans_feat and trans != "Select":
             new_line()
             col1, col2, col3 = st.columns([1, 0.5, 1])
-            if col2.button("Apply", key='trans_apply',use_container_width=True ,help="Click to apply transformation."):
+            if col2.button("Apply", key='trans_apply',use_container_width=True ,help="Click to apply transformation.", disabled=bool(missing_cols or negative_cols)):
 
                 progress_bar()
 
                 # Depending on the transformation selected
                 if trans == "Log Transformation":
-                    x1 = df[trans_feat].astype(float)
-                    df[trans_feat] = np.where(x1 > 0, np.log1p(x1), 0.0)
+                    df[trans_feat] = np.log1p(df[trans_feat].astype(float))
                     st.session_state['df'] = df
                     st.success("Numerical features have been transformed using Log Transformation.")
                 elif trans == "Square Root Transformation":

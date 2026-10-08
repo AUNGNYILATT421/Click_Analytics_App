@@ -15,11 +15,10 @@ from utils import new_line
 from config import set_page_config
 from session_state import initial_state
 from data_loading import load_data
-from missing_values_handler import handle_missing_values
 from scaling_functions import display_scaling_options
 from transformation_functions import display_transformation_options
 from feature_engineering import extract_feature, transform_feature, select_feature, show_dataframe
-from data_splitting import split_data
+from data_splitting import split_data, discard_split_if_data_changed
 from model_building import *
 import eda_module
 from missing_values_handler import handle_missing_values
@@ -85,8 +84,11 @@ if st.session_state.df is None:
     elif uploading_way == "url":
         url = st.text_input("Enter URL")
         if url:
-            df = load_data(url)
-            st.session_state.df = df
+            try:
+                df = load_data(url)
+                st.session_state.df = df
+            except Exception as e:
+                st.error(f"Error loading the URL: {e}")
     
     
 # Dataframe
@@ -155,11 +157,13 @@ if st.session_state.df is not None:
 
     # Data Splitting
     split_data(df)
+    discard_split_if_data_changed()
 
     # Building the model
     from model_building import *
-    if 'X_train' in st.session_state and 'y_train' in st.session_state:
-        display_model_building_options(X_train, y_train)
+    # The keys always exist (initial_state sets them to None), so check that the data has actually been split
+    if st.session_state.X_train is not None and st.session_state.y_train is not None:
+        display_model_building_options(st.session_state.X_train, st.session_state.y_train)
 
 
     # Evaluation
@@ -167,10 +171,12 @@ if st.session_state.df is not None:
         st.markdown("### 📈 Evaluation")
         new_line()
         with st.expander("Model Evaluation"):
-            # Load the model
-            import joblib
-            model = joblib.load('model.pkl')
-            
+            # Use the model trained in this session (not a shared file on disk)
+            model = st.session_state['trained_model']
+
+            # Re-read: training may have reset the metrics earlier in this run
+            metrics_df = st.session_state['metrics_df']
+
             if "lst_models_predictions" not in st.session_state:
                 st.session_state.lst_models_predictions = []
 
@@ -214,6 +220,9 @@ y_pred_test = model.predict(X_test)
             # Choose Evaluation Metric
             if st.session_state['problem_type'] == "Classification":
                 evaluation_metric = st.multiselect("Evaluation Metric", ["Accuracy", "Precision", "Recall", "F1 Score", "AUC Score"], key='evaluation_metric')
+
+                # 0/1 targets use the usual binary scores; other targets average the score over all classes
+                average = 'binary' if set(pd.Series(y_train).unique()) <= {0, 1} else 'weighted'
 
             elif st.session_state['problem_type'] == "Regression":
                 evaluation_metric = st.multiselect("Evaluation Metric", ["Mean Absolute Error (MAE)", "Mean Squared Error (MSE)", "Root Mean Squared Error (RMSE)", "R2 Score"], key='evaluation_metric')
@@ -282,14 +291,14 @@ print("Accuracy Score on Test Set: ", accuracy_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - Precision
 from sklearn.metrics import precision_score
-print("Precision Score on Train Set: ", precision_score(y_train, y_pred_train))
-print("Precision Score on Validation Set: ", precision_score(y_val, y_pred_val))
-print("Precision Score on Test Set: ", precision_score(y_test, y_pred_test))
+print("Precision Score on Train Set: ", precision_score(y_train, y_pred_train, average='{average}'))
+print("Precision Score on Validation Set: ", precision_score(y_val, y_pred_val, average='{average}'))
+print("Precision Score on Test Set: ", precision_score(y_test, y_pred_test, average='{average}'))
 \n """
                                     from sklearn.metrics import precision_score
-                                    train_prec = precision_score(y_train, y_pred_train)
-                                    val_prec = precision_score(y_val, y_pred_val)
-                                    test_prec = precision_score(y_test, y_pred_test)
+                                    train_prec = precision_score(y_train, y_pred_train, average=average)
+                                    val_prec = precision_score(y_val, y_pred_val, average=average)
+                                    test_prec = precision_score(y_test, y_pred_test, average=average)
 
                                     metrics_df[metric] = [train_prec, val_prec, test_prec]
                                     st.session_state['metrics_df'] = metrics_df
@@ -298,12 +307,12 @@ print("Precision Score on Test Set: ", precision_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - Precision
 from sklearn.metrics import precision_score
-print("Precision Score on Train Set: ", precision_score(y_train, y_pred_train))
-print("Precision Score on Test Set: ", precision_score(y_test, y_pred_test))
+print("Precision Score on Train Set: ", precision_score(y_train, y_pred_train, average='{average}'))
+print("Precision Score on Test Set: ", precision_score(y_test, y_pred_test, average='{average}'))
 \n """
                                     from sklearn.metrics import precision_score
-                                    train_prec = precision_score(y_train, y_pred_train)
-                                    test_prec = precision_score(y_test, y_pred_test)
+                                    train_prec = precision_score(y_train, y_pred_train, average=average)
+                                    test_prec = precision_score(y_test, y_pred_test, average=average)
 
                                     metrics_df[metric] = [train_prec, test_prec]
                                     st.session_state['metrics_df'] = metrics_df
@@ -320,14 +329,14 @@ print("Precision Score on Test Set: ", precision_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - Recall
 from sklearn.metrics import recall_score
-print("Recall Score on Train Set: ", recall_score(y_train, y_pred_train))
-print("Recall Score on Validation Set: ", recall_score(y_val, y_pred_val))
-print("Recall Score on Test Set: ", recall_score(y_test, y_pred_test))
+print("Recall Score on Train Set: ", recall_score(y_train, y_pred_train, average='{average}'))
+print("Recall Score on Validation Set: ", recall_score(y_val, y_pred_val, average='{average}'))
+print("Recall Score on Test Set: ", recall_score(y_test, y_pred_test, average='{average}'))
 \n """
                                     from sklearn.metrics import recall_score
-                                    train_rec = recall_score(y_train, y_pred_train)
-                                    val_rec = recall_score(y_val, y_pred_val)
-                                    test_rec = recall_score(y_test, y_pred_test)
+                                    train_rec = recall_score(y_train, y_pred_train, average=average)
+                                    val_rec = recall_score(y_val, y_pred_val, average=average)
+                                    test_rec = recall_score(y_test, y_pred_test, average=average)
 
                                     metrics_df[metric] = [train_rec, val_rec, test_rec]
                                     st.session_state['metrics_df'] = metrics_df
@@ -336,12 +345,12 @@ print("Recall Score on Test Set: ", recall_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - Recall
 from sklearn.metrics import recall_score
-print("Recall Score on Train Set: ", recall_score(y_train, y_pred_train))
-print("Recall Score on Test Set: ", recall_score(y_test, y_pred_test))
+print("Recall Score on Train Set: ", recall_score(y_train, y_pred_train, average='{average}'))
+print("Recall Score on Test Set: ", recall_score(y_test, y_pred_test, average='{average}'))
 \n """
                                     from sklearn.metrics import recall_score
-                                    train_rec = recall_score(y_train, y_pred_train)
-                                    test_rec = recall_score(y_test, y_pred_test)
+                                    train_rec = recall_score(y_train, y_pred_train, average=average)
+                                    test_rec = recall_score(y_test, y_pred_test, average=average)
 
                                     metrics_df[metric] = [train_rec, test_rec]
                                     st.session_state['metrics_df'] = metrics_df
@@ -358,14 +367,14 @@ print("Recall Score on Test Set: ", recall_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - F1 Score
 from sklearn.metrics import f1_score
-print("F1 Score on Train Set: ", f1_score(y_train, y_pred_train))
-print("F1 Score on Validation Set: ", f1_score(y_val, y_pred_val))
-print("F1 Score on Test Set: ", f1_score(y_test, y_pred_test))
+print("F1 Score on Train Set: ", f1_score(y_train, y_pred_train, average='{average}'))
+print("F1 Score on Validation Set: ", f1_score(y_val, y_pred_val, average='{average}'))
+print("F1 Score on Test Set: ", f1_score(y_test, y_pred_test, average='{average}'))
 \n """
                                     from sklearn.metrics import f1_score
-                                    train_f1 = f1_score(y_train, y_pred_train)
-                                    val_f1 = f1_score(y_val, y_pred_val)
-                                    test_f1 = f1_score(y_test, y_pred_test)
+                                    train_f1 = f1_score(y_train, y_pred_train, average=average)
+                                    val_f1 = f1_score(y_val, y_pred_val, average=average)
+                                    test_f1 = f1_score(y_test, y_pred_test, average=average)
 
                                     metrics_df[metric] = [train_f1, val_f1, test_f1]
                                     st.session_state['metrics_df'] = metrics_df
@@ -374,12 +383,12 @@ print("F1 Score on Test Set: ", f1_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - F1 Score
 from sklearn.metrics import f1_score
-print("F1 Score on Train Set: ", f1_score(y_train, y_pred_train))
-print("F1 Score on Test Set: ", f1_score(y_test, y_pred_test))
+print("F1 Score on Train Set: ", f1_score(y_train, y_pred_train, average='{average}'))
+print("F1 Score on Test Set: ", f1_score(y_test, y_pred_test, average='{average}'))
 \n """
                                     from sklearn.metrics import f1_score
-                                    train_f1 = f1_score(y_train, y_pred_train)
-                                    test_f1 = f1_score(y_test, y_pred_test)
+                                    train_f1 = f1_score(y_train, y_pred_train, average=average)
+                                    test_f1 = f1_score(y_test, y_pred_test, average=average)
 
                                     metrics_df[metric] = [train_f1, test_f1]
                                     st.session_state['metrics_df'] = metrics_df
@@ -661,9 +670,8 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
         new_line()
         st.dataframe(df, use_container_width=True)
 
-    st.session_state.df.to_csv("df.csv", index=False)
-    df_file = open("df.csv", "rb")
-    df_bytes = df_file.read()
+    # Build the CSV in memory instead of writing df.csv to disk on every rerun
+    df_bytes = st.session_state.df.to_csv(index=False).encode('utf-8')
     if col2.download_button("📌 Download df", df_bytes, "df.csv", key='save_df', use_container_width=True):
         st.success("Downloaded Successfully!")
 

@@ -138,6 +138,29 @@ df.drop(columns={col_to_delete}, inplace=True)
                 st.success(f"The Columns **`{col_to_delete}`** are Deleted Successfully!")
 
 
+        # Remove Duplicate Rows (rows identical in every column)
+        remove_dup = st.checkbox("Remove Duplicate Rows", value=False)
+        new_line()
+        if remove_dup:
+            n_dup = int(df.duplicated().sum())
+            if n_dup == 0:
+                st.info("There are no duplicate rows.")
+            else:
+                st.write(f"This DataFrame has **{n_dup}** rows that are exact copies of an earlier row.")
+                col1, col2, col3 = st.columns([1,0.7,1])
+                if col2.button("Remove", use_container_width=True, key="remove_duplicates"):
+                    st.session_state.all_the_process += f"""
+# Remove Duplicate Rows
+df.drop_duplicates(inplace=True)
+df.reset_index(drop=True, inplace=True)
+\n """
+                    progress_bar()
+                    df.drop_duplicates(inplace=True)
+                    df.reset_index(drop=True, inplace=True)
+                    st.session_state.df = df
+                    st.success(f"**{n_dup}** duplicate rows have been removed.")
+
+
         # Show DataFrame Button
         col1, col2, col3 = st.columns([0.15,1,0.15])
         col2.divider()
@@ -152,29 +175,31 @@ df.drop(columns={col_to_delete}, inplace=True)
         new_line()
         if hist:
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            col_for_hist = st.selectbox("Select Column for Histogram", options=numeric_cols)
-            num_bins = st.slider("Select Number of Bins", min_value=10, max_value=100, value=30)
-            fig, ax = plt.subplots()
-            df[col_for_hist].hist(bins=num_bins, ax=ax, color='skyblue')
-            ax.set_title(f'Histogram of {col_for_hist}')
-            st.pyplot(fig)
-            new_line()
-        
+            if not numeric_cols:
+                st.info("There is no Numerical Features.")
+            else:
+                col_for_hist = st.selectbox("Select Column for Histogram", options=numeric_cols)
+                num_bins = st.slider("Select Number of Bins", min_value=10, max_value=100, value=30)
+                fig, ax = plt.subplots()
+                df[col_for_hist].hist(bins=num_bins, ax=ax, color='skyblue')
+                ax.set_title(f'Histogram of {col_for_hist}')
+                st.pyplot(fig)
+                new_line()
+
         # Box Plots for Numerical Features
         boxplot = st.checkbox("Show Box Plots", value=False)
         new_line()
         if boxplot:
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            col_for_box = st.selectbox("Select Column for Box Plot", options=numeric_cols)
-            fig, ax = plt.subplots()
-            df.boxplot(column=[col_for_box], ax=ax)
-            ax.set_title(f'Box Plot of {col_for_box}')
-            st.pyplot(fig)
-            new_line()
-        
-        # st.set_option('deprecation.showPyplotGlobalUse', False)
-        fig = plt.gcf()
-        st.pyplot(fig)
+            if not numeric_cols:
+                st.info("There is no Numerical Features.")
+            else:
+                col_for_box = st.selectbox("Select Column for Box Plot", options=numeric_cols)
+                fig, ax = plt.subplots()
+                df.boxplot(column=[col_for_box], ax=ax)
+                ax.set_title(f'Box Plot of {col_for_box}')
+                st.pyplot(fig)
+                new_line()
 
 
         # Scatter Plots for Numerical Features
@@ -182,65 +207,85 @@ df.drop(columns={col_to_delete}, inplace=True)
         new_line()
         if scatter:
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            x_col = st.selectbox("Select X-axis Column", options=numeric_cols, index=0)
-            y_col = st.selectbox("Select Y-axis Column", options=numeric_cols, index=1 if len(numeric_cols) > 1 else 0)
-            fig, ax = plt.subplots()
-            df.plot(kind='scatter', x=x_col, y=y_col, ax=ax, color='red')
-            ax.set_title(f'Scatter Plot between {x_col} and {y_col}')
-            st.pyplot(fig)
-            new_line()
-        
+            if not numeric_cols:
+                st.info("There is no Numerical Features.")
+            else:
+                x_col = st.selectbox("Select X-axis Column", options=numeric_cols, index=0)
+                y_col = st.selectbox("Select Y-axis Column", options=numeric_cols, index=1 if len(numeric_cols) > 1 else 0)
+                fig, ax = plt.subplots()
+                df.plot(kind='scatter', x=x_col, y=y_col, ax=ax, color='red')
+                ax.set_title(f'Scatter Plot between {x_col} and {y_col}')
+                st.pyplot(fig)
+                new_line()
+
         # Pair Plots for Numerical Features
         pairplot = st.checkbox("Show Pair Plots", value=False)
         new_line()
         if pairplot:
-            sns.pairplot(df.select_dtypes(include=np.number))
-            st.pyplot()
-        
+            numeric_df = df.select_dtypes(include=np.number)
+            if numeric_df.empty:
+                st.info("There is no Numerical Features.")
+            else:
+                pair_grid = sns.pairplot(numeric_df)
+                st.pyplot(pair_grid.figure)
+                plt.close(pair_grid.figure)
+
         # Count Plots for Categorical Data
         countplot = st.checkbox("Show Count Plots", value=False)
         new_line()
         if countplot:
             categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-            col_for_count = st.selectbox("Select Column for Count Plot", options=categorical_cols)
-            fig, ax = plt.subplots()
-            sns.countplot(x=df[col_for_count], data=df, ax=ax)
-            ax.set_title(f'Count Plot of {col_for_count}')
-            st.pyplot(fig)
-            new_line()
-        
+            if not categorical_cols:
+                st.info("There is no Categorical Features.")
+            else:
+                col_for_count = st.selectbox("Select Column for Count Plot", options=categorical_cols)
+                fig, ax = plt.subplots()
+                sns.countplot(x=df[col_for_count], data=df, ax=ax)
+                ax.set_title(f'Count Plot of {col_for_count}')
+                st.pyplot(fig)
+                new_line()
+
         # Pie Charts for Categorical Data
         pie_chart = st.checkbox("Show Pie Charts", value=False)
         new_line()
         if pie_chart:
             categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-            col_for_pie = st.selectbox("Select Column for Pie Chart", options=categorical_cols)
-            pie_data = df[col_for_pie].value_counts()
-            fig, ax = plt.subplots()
-            ax.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-            ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
-            ax.set_title(f'Pie Chart of {col_for_pie}')
-            st.pyplot(fig)
-            new_line()
-        
+            if not categorical_cols:
+                st.info("There is no Categorical Features.")
+            else:
+                col_for_pie = st.selectbox("Select Column for Pie Chart", options=categorical_cols)
+                pie_data = df[col_for_pie].value_counts()
+                fig, ax = plt.subplots()
+                ax.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+                ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+                ax.set_title(f'Pie Chart of {col_for_pie}')
+                st.pyplot(fig)
+                new_line()
+
         new_line()
         if st.checkbox("Identify Outliers", value=False):
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            col_for_outliers = st.selectbox("Select Column to Check Outliers", options=numeric_cols)
-            fig, ax = plt.subplots()
-            sns.boxplot(x=df[col_for_outliers], ax=ax)
-            ax.set_title(f'Outliers in {col_for_outliers}')
-            st.pyplot(fig)
-            new_line()
+            if not numeric_cols:
+                st.info("There is no Numerical Features.")
+            else:
+                col_for_outliers = st.selectbox("Select Column to Check Outliers", options=numeric_cols)
+                fig, ax = plt.subplots()
+                sns.boxplot(x=df[col_for_outliers], ax=ax)
+                ax.set_title(f'Outliers in {col_for_outliers}')
+                st.pyplot(fig)
+                new_line()
 
         new_line()
         if st.checkbox("Show Cross-tabulations", value=False):
             categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-            x_col = st.selectbox("Select X-axis Column for Cross-tab", options=categorical_cols, index=0)
-            y_col = st.selectbox("Select Y-axis Column for Cross-tab", options=categorical_cols, index=1 if len(categorical_cols) > 1 else 0)
-            cross_tab = pd.crosstab(df[x_col], df[y_col])
-            st.write(cross_tab)
-            new_line()
+            if not categorical_cols:
+                st.info("There is no Categorical Features.")
+            else:
+                x_col = st.selectbox("Select X-axis Column for Cross-tab", options=categorical_cols, index=0)
+                y_col = st.selectbox("Select Y-axis Column for Cross-tab", options=categorical_cols, index=1 if len(categorical_cols) > 1 else 0)
+                cross_tab = pd.crosstab(df[x_col], df[y_col])
+                st.write(cross_tab)
+                new_line()
 
         new_line()
         if st.checkbox("Segmented Analysis", value=False):

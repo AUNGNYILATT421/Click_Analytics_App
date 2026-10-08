@@ -2,6 +2,7 @@
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from utils import new_line
 
@@ -19,10 +20,65 @@ def display_splitting_options(df):
     
     return target, sets
 
+def remove_target_leaks(df, target):
+    # Features 100% correlated with the target give the answer away, so remove them before splitting
+    if not pd.api.types.is_numeric_dtype(df[target]):
+        return []
+    features = df.drop(columns=target).select_dtypes(include=[np.number, 'bool']).astype(float)
+    corr = features.corrwith(df[target].astype(float))
+    leaks = corr[np.isclose(corr.abs(), 1.0)].index.tolist()
+    if leaks:
+        st.session_state.all_the_process += f"""
+# Remove features 100% correlated with the target
+df.drop(columns={leaks}, inplace=True)
+\n """
+        df.drop(columns=leaks, inplace=True)
+        st.session_state['df'] = df
+    return leaks
+
+def show_removed_leaks(leaks, target):
+    if leaks:
+        st.warning(f"The features **`{leaks}`** are 100% correlated with the target **`{target}`**, so they would give the answer away "
+                   "and the model wouldn't learn anything useful. They have been removed from the dataset.")
+
+def data_fingerprint(df):
+    # Changes whenever any value, column name or dtype changes
+    return (tuple(map(str, df.columns)), tuple(map(str, df.dtypes)), int(pd.util.hash_pandas_object(df, index=True).sum()))
+
+def clear_trained_model():
+    # A model (and its predictions/metrics) belongs to the split it was trained on
+    st.session_state['trained_model'] = None
+    st.session_state['trained_model_bool'] = False
+    st.session_state['lst_models_predictions'] = []
+    st.session_state['models_with_eval'] = {}
+    st.session_state['metrics_df'] = pd.DataFrame()
+    for key in ('y_pred_train', 'y_pred_val', 'y_pred_test'):
+        st.session_state[key] = None
+
+def record_split():
+    # Remember which data this split was made from, and drop any model trained on an earlier split
+    st.session_state['split_fingerprint'] = data_fingerprint(st.session_state['df'])
+    st.session_state['split_discarded'] = False
+    clear_trained_model()
+
+def discard_split_if_data_changed():
+    # If the data changed after splitting, the split is out of date: discard it so Model Building stays hidden
+    if st.session_state.get('X_train') is not None and st.session_state.get('split_fingerprint') != data_fingerprint(st.session_state['df']):
+        for key in ('X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test'):
+            st.session_state[key] = None
+        st.session_state['split_fingerprint'] = None
+        st.session_state['split_discarded'] = True
+        clear_trained_model()
+
+    if st.session_state.get('split_discarded'):
+        st.warning("The data has changed since it was split, so the old split and any model trained on it have been discarded. "
+                   "Please **split the data again** to continue to model building.")
+
 def train_test_split_ui(df, target, train_size, test_size):
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("Split Data"):
+            leaks = remove_target_leaks(df, target)
             st.session_state.all_the_process += f"""
 # Data Splitting
 from sklearn.model_selection import train_test_split
@@ -33,8 +89,13 @@ X_train, X_test, y_train, y_test = train_test_split(df.drop('{target}', axis=1),
             st.session_state['X_test'] = X_test
             st.session_state['y_train'] = y_train
             st.session_state['y_test'] = y_test
+            # Clear any validation set left over from an earlier 3-way split
+            st.session_state['X_val'] = None
+            st.session_state['y_val'] = None
+            record_split()
             st.success("Data Splitting Done!")
-            
+            show_removed_leaks(leaks, target)
+
             col1, col2 = st.columns(2)
             with col1:
                 st.write("Train")
@@ -58,6 +119,7 @@ def train_val_test_split_ui(df, target, train_size, val_size, test_size):
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             if st.button("Split Data", use_container_width=True):
+                leaks = remove_target_leaks(df, target)
                 st.session_state.all_the_process += f"""
 # Data Splitting
 from sklearn.model_selection import train_test_split
@@ -72,7 +134,9 @@ X_val, X_test, y_val, y_test = train_test_split(X_rem, y_rem, train_size= {val_s
                 st.session_state['y_train'] = y_train
                 st.session_state['y_val'] = y_val
                 st.session_state['y_test'] = y_test
+                record_split()
                 st.success("Data Splitting Done!")
+                show_removed_leaks(leaks, target)
                 
                 col1, col2, col3 = st.columns(3)
 

@@ -6,6 +6,21 @@ from sklearn.impute import SimpleImputer
 from utils import new_line
 from progress_bar import progress_bar
 
+def fill_mean_median(df, features, stat):
+    # Fill numeric features with the mean/median and non-numeric ones with the mode, in place
+    features = list(dict.fromkeys(features))  # drop duplicates, keep order
+    num_cols = [c for c in features if pd.api.types.is_numeric_dtype(df[c])]
+    cat_cols = [c for c in features if c not in num_cols]
+
+    if num_cols:
+        df[num_cols] = df[num_cols].fillna(df[num_cols].agg(stat))
+    for col in cat_cols:
+        mode = df[col].mode()
+        if not mode.empty:
+            df[col] = df[col].fillna(mode.iloc[0])
+
+    return num_cols, cat_cols
+
 def handle_missing_values(df):
     # Missing Values
     new_line()
@@ -30,8 +45,9 @@ def handle_missing_values(df):
                 st.markdown("<h6 align='center'> Percentage of Null Values", unsafe_allow_html=True)
                 null_percentage = pd.DataFrame(round(df.isnull().sum()/df.shape[0]*100, 2))
                 null_percentage.columns = ['Percentage']
-                null_percentage['Percentage'] = null_percentage['Percentage'].map('{:.2f} %'.format)
+                # Sort while the values are still numbers, then format them as text
                 null_percentage = null_percentage.sort_values(by='Percentage', ascending=False)
+                null_percentage['Percentage'] = null_percentage['Percentage'].map('{:.2f} %'.format)
                 st.dataframe(null_percentage, height=300, use_container_width=True)
 
             # Heatmap
@@ -84,85 +100,53 @@ def handle_missing_values(df):
 
                 
                 # Drop Rows
+                # Changes are made in place so the rest of the page sees them in this run
+                fill_feat = list(dict.fromkeys(fill_feat))
                 if strategy == "Drop Rows":
                     st.session_state.all_the_process += f"""
 # Drop Rows
-df[{fill_feat}] = df[{fill_feat}].dropna(axis=0)
+df.dropna(subset={fill_feat}, inplace=True)
+df.reset_index(drop=True, inplace=True)
 \n """
-                    df[fill_feat] = df[fill_feat].dropna(axis=0)
+                    n_before = len(df)
+                    df.dropna(subset=fill_feat, inplace=True)
+                    df.reset_index(drop=True, inplace=True)
                     st.session_state['df'] = df
-                    st.success(f"Missing values have been dropped from the DataFrame for the features **`{fill_feat}`**.")
+                    st.success(f"**{n_before - len(df)}** rows with missing values in **`{fill_feat}`** have been dropped. **{len(df)}** rows remain.")
 
 
-                # Drop Columns
+                # Drop Columns (only the selected columns that actually have missing values)
                 elif strategy == "Drop Columns":
+                    drop_cols = [c for c in fill_feat if df[c].isnull().any()]
                     st.session_state.all_the_process += f"""
 # Drop Columns
-df[{fill_feat}] = df[{fill_feat}].dropna(axis=1)
+df.drop(columns={drop_cols}, inplace=True)
 \n """
-                    df[fill_feat] = df[fill_feat].dropna(axis=1)
+                    df.drop(columns=drop_cols, inplace=True)
                     st.session_state['df'] = df
-                    st.success(f"The Columns **`{fill_feat}`** have been dropped from the DataFrame.")
+                    st.success(f"The Columns **`{drop_cols}`** have been dropped from the DataFrame.")
+                    kept = [c for c in fill_feat if c not in drop_cols]
+                    if kept:
+                        st.info(f"The Columns **`{kept}`** have no missing values, so they were kept.")
 
 
-                # Fill with Mean
-                elif strategy == "Fill with Mean":
+                # Fill with Mean / Median (non-numeric features fall back to the mode)
+                elif strategy in ("Fill with Mean", "Fill with Median"):
+                    stat = "mean" if strategy == "Fill with Mean" else "median"
+                    num_cols, cat_cols = fill_mean_median(df, fill_feat, stat)
+
                     st.session_state.all_the_process += f"""
-# Fill with Mean
-from sklearn.impute import SimpleImputer
-num_imputer = SimpleImputer(strategy='mean')
-df[{fill_feat}] = num_imputer.fit_transform(df[{fill_feat}])
+# Fill with {stat.capitalize()} (numeric) and Mode (non-numeric)
+df[{num_cols}] = df[{num_cols}].fillna(df[{num_cols}].{stat}())
+for col in {cat_cols}:
+    df[col] = df[col].fillna(df[col].mode().iloc[0])
 \n """
-                    from sklearn.impute import SimpleImputer
-                    num_imputer = SimpleImputer(strategy='mean')
-                    df[fill_feat] = num_imputer.fit_transform(df[fill_feat])
-
-                    null_cat = df[missing_df_cols].select_dtypes(include=object).columns.tolist()
-                    if null_cat:
-                        st.session_state.all_the_process += f"""
-# Fill with Mode
-from sklearn.impute import SimpleImputer
-cat_imputer = SimpleImputer(strategy='most_frequent')
-df[{null_cat}] = cat_imputer.fit_transform(df[{null_cat}])
-\n """
-                        cat_imputer = SimpleImputer(strategy='most_frequent')
-                        df[null_cat] = cat_imputer.fit_transform(df[null_cat])
-
                     st.session_state['df'] = df
-                    if df.select_dtypes(include=object).columns.tolist():
-                        st.success(f"The Columns **`{fill_feat}`** has been filled with the mean. And the categorical columns **`{null_cat}`** has been filled with the mode.")
-                    else:
-                        st.success(f"The Columns **`{fill_feat}`** has been filled with the mean.")
-                    
 
-                # Fill with Median
-                elif strategy == "Fill with Median":
-                    st.session_state.all_the_process += f"""
-# Fill with Median
-from sklearn.impute import SimpleImputer
-num_imputer = SimpleImputer(strategy='median')
-df[{fill_feat}] = pd.DataFrame(num_imputer.fit_transform(df[{fill_feat}]), columns=df[{fill_feat}].columns)
-\n """
-                    from sklearn.impute import SimpleImputer
-                    num_imputer = SimpleImputer(strategy='median')
-                    df[fill_feat] = pd.DataFrame(num_imputer.fit_transform(df[fill_feat]), columns=df[fill_feat].columns)
-
-                    null_cat = df[missing_df_cols].select_dtypes(include=object).columns.tolist()
-                    if null_cat:
-                        st.session_state.all_the_process += f"""
-# Fill with Mode
-from sklearn.impute import SimpleImputer
-cat_imputer = SimpleImputer(strategy='most_frequent')
-df[{null_cat}] = cat_imputer.fit_transform(df[{null_cat}])
-\n """
-                        cat_imputer = SimpleImputer(strategy='most_frequent')
-                        df[null_cat] = cat_imputer.fit_transform(df[null_cat])
-
-                    st.session_state['df'] = df
-                    if df.select_dtypes(include=object).columns.tolist():
-                        st.success(f"The Columns **`{fill_feat}`** has been filled with the Median. And the categorical columns **`{null_cat}`** has been filled with the mode.")
-                    else:
-                        st.success(f"The Columns **`{fill_feat}`** has been filled with the Median.")
+                    if num_cols:
+                        st.success(f"The numeric columns **`{num_cols}`** have been filled with the {stat}.")
+                    if cat_cols:
+                        st.info(f"The {stat} can't be computed for non-numeric columns, so **`{cat_cols}`** have been filled with the mode (most frequent value) instead.")
 
 
                 # Fill with Mode
@@ -185,11 +169,11 @@ df[{fill_feat}] = imputer.fit_transform(df[{fill_feat}])
                 elif strategy == "Fill with ffill, bfill":
                     st.session_state.all_the_process += f"""
 # Fill with ffill, bfill
-df[{fill_feat}] = df[{fill_feat}].fillna(method='ffill').fillna(method='bfill')
+df[{fill_feat}] = df[{fill_feat}].ffill().bfill()
 \n """
-                    df = df.fillna(method='ffill').fillna(method='bfill')
+                    df[fill_feat] = df[fill_feat].ffill().bfill()
                     st.session_state['df'] = df
-                    st.success("The DataFrame has been filled with ffill, bfill.")
+                    st.success(f"The Columns **`{fill_feat}`** have been filled with ffill, bfill.")
         
         # Show DataFrame Button
         col1, col2, col3 = st.columns([0.15,1,0.15])

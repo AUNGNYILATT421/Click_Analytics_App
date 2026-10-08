@@ -60,12 +60,16 @@ def display_scaling_options(st, df):
         with col2:
             scaling = st.selectbox("Select Scaling", ["Select", "Standard Scaling", "MinMax Scaling", "Robust Scaling"], help="Select the scaling method.")
 
+        # Features with missing values can't be scaled
+        missing_cols = [col for col in scale_feat if df[col].isnull().any()]
+        if missing_cols:
+            st.warning(f"The Features **`{missing_cols}`** have missing values, so they can't be scaled yet. Please handle them in the **⚠️ Missing Values** section first.")
 
-        if scale_feat and scaling != "Select":       
+        if scale_feat and scaling != "Select":
                 new_line()
                 col1, col2, col3 = st.columns([1, 0.5, 1])
-                
-                if col2.button("Apply", key='scaling_apply',use_container_width=True ,help="Click to apply scaling."):
+
+                if col2.button("Apply", key='scaling_apply',use_container_width=True ,help="Click to apply scaling.", disabled=bool(missing_cols)):
 
                     progress_bar()
     
@@ -75,11 +79,11 @@ def display_scaling_options(st, df):
 # Standard Scaling
 from sklearn.preprocessing import StandardScaler
 scaler = StandardScaler()
-df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=df[{scale_feat}].columns)
+df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=df[{scale_feat}].columns, index=df.index)
 \n """
                         from sklearn.preprocessing import StandardScaler
                         scaler = StandardScaler()
-                        df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns)
+                        df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns, index=df.index)
                         st.session_state['df'] = df
                         st.success(f"The Features **`{scale_feat}`** have been scaled using Standard Scaling.")
     
@@ -89,11 +93,11 @@ df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=
 # MinMax Scaling
 from sklearn.preprocessing import MinMaxScaler
 scaler = MinMaxScaler()
-df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=df[{scale_feat}].columns)
+df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=df[{scale_feat}].columns, index=df.index)
 \n """
                         from sklearn.preprocessing import MinMaxScaler
                         scaler = MinMaxScaler()
-                        df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns)
+                        df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns, index=df.index)
                         st.session_state['df'] = df
                         st.success(f"The Features **`{scale_feat}`** have been scaled using MinMax Scaling.")
     
@@ -103,11 +107,11 @@ df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=
 # Robust Scaling
 from sklearn.preprocessing import RobustScaler
 scaler = RobustScaler()
-df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=df[{scale_feat}].columns)
+df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=df[{scale_feat}].columns, index=df.index)
 \n """
                         from sklearn.preprocessing import RobustScaler
                         scaler = RobustScaler()
-                        df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns)
+                        df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns, index=df.index)
                         st.session_state['df'] = df
                         st.success(f"The Features **`{scale_feat}`** have been scaled using Robust Scaling.")
 

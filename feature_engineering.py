@@ -24,7 +24,7 @@ def extract_feature(df):
     with col3:
         feat2 = st.selectbox("Second Feature/s",["Select"] + df.select_dtypes(include=np.number).columns.tolist(), key="feat_ex2", help="Select the second feature/s you want to extract.")
     
-    if feat1 and op != "Select" and feat2:
+    if feat1 != "Select" and op != "Select" and feat2 != "Select":
         col1, col2, col3 = st.columns(3)
         with col2:
             feat_name = st.text_input("Feature Name", key="feat_name", help="Enter the name of the new feature.")

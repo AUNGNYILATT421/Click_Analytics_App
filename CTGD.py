@@ -56,9 +56,10 @@ def handle_categorical_data(st, df):
         if show_cat:
             col1, col2 = st.columns(2)
             col1.dataframe(df.select_dtypes(include=[object]), height=250, use_container_width=True)
-            if len(df.select_dtypes(include=[object]).columns.tolist()) > 1:
+            if len(df.select_dtypes(include=[object]).columns.tolist()) >= 1:
                 tmp = df.select_dtypes(include=[object])
-                tmp = tmp.apply(lambda x: x.unique())
+                # Build the Series explicitly: apply() returns a DataFrame when every column has the same number of unique values
+                tmp = pd.Series({col: tmp[col].unique() for col in tmp.columns})
                 tmp = tmp.to_frame()
                 tmp.columns = ['Unique Values']
                 col2.dataframe(tmp, height=250, use_container_width=True)
@@ -116,7 +117,10 @@ def apply_encoding(df, features, method, st):
         st.success(f"The Categories of the features **`{features}`** have been encoded using Ordinal Encoding.")
         
     elif method == "One Hot Encoding":
-        df = pd.get_dummies(df, columns=features)
+        # Modify df in place (like the other encodings) so the change is kept in session state
+        dummies = pd.get_dummies(df[features], columns=features)
+        df.drop(columns=features, inplace=True)
+        df[dummies.columns] = dummies
         st.success(f"The Categories of the features **`{features}`** have been encoded using One Hot Encoding.")
 
     elif method == "Count Frequency Encoding":
