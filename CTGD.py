@@ -118,7 +118,7 @@ def apply_encoding(df, features, method, st):
         
     elif method == "One Hot Encoding":
         # Modify df in place (like the other encodings) so the change is kept in session state
-        dummies = pd.get_dummies(df[features], columns=features)
+        dummies = pd.get_dummies(df[features], columns=features, drop_first=True)
         df.drop(columns=features, inplace=True)
         df[dummies.columns] = dummies
         st.success(f"The Categories of the features **`{features}`** have been encoded using One Hot Encoding.")
