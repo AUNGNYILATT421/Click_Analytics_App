@@ -21,12 +21,59 @@ def fill_mean_median(df, features, stat):
 
     return num_cols, cat_cols
 
+def blank_mask(s):
+    # True for text values that are empty or contain only spaces
+    if not (pd.api.types.is_object_dtype(s.dtype) or pd.api.types.is_string_dtype(s.dtype)):
+        return pd.Series(False, index=s.index)
+    return s.apply(lambda v: isinstance(v, str) and v.strip() == "")
+
+def format_row_ranges(rows):
+    # [5, 17, 18, 19, 42] -> "5, 17-19, 42" (the format Delete Rows accepts)
+    parts, start = [], None
+    for i, r in enumerate(rows):
+        if start is None:
+            start = r
+        if i == len(rows) - 1 or rows[i + 1] != r + 1:
+            parts.append(str(start) if start == r else f"{start}-{r}")
+            start = None
+    return ", ".join(parts)
+
 def handle_missing_values(df):
     # Missing Values
     new_line()
     st.markdown("### ⚠️ Missing Values", unsafe_allow_html=True)
     new_line()
     with st.expander("Show Missing Values"):
+
+        # Treat Blank Text as Missing (empty strings and strings with only spaces)
+        new_line()
+        treat_blank = st.checkbox("Treat Blank Text as Missing", value=False, key='treat_blank')
+        if treat_blank:
+            blank_counts = {col: int(blank_mask(df[col]).sum()) for col in df.columns}
+            blank_counts = {col: n for col, n in blank_counts.items() if n}
+            if not blank_counts:
+                st.info("There are no blank text values (empty or only spaces).")
+            else:
+                st.write("Columns with blank text values (empty or only spaces): "
+                         + ", ".join(f"**`{col}`** ({n})" for col, n in blank_counts.items()))
+                blank_cols = st.multiselect("Select Columns", list(blank_counts), key='blank_cols',
+                                            help="Blank text in these columns will become missing values.")
+                if blank_cols:
+                    col1, col2, col3 = st.columns([1, 0.7, 1])
+                    if col2.button("Convert to Missing", use_container_width=True, key='blank_apply'):
+                        st.session_state.all_the_process += f"""
+# Treat Blank Text as Missing
+for col in {blank_cols}:
+    df.loc[df[col].apply(lambda v: isinstance(v, str) and v.strip() == ""), col] = np.nan
+\n """
+                        progress_bar()
+                        converted = 0
+                        for col in blank_cols:
+                            mask = blank_mask(df[col])
+                            converted += int(mask.sum())
+                            df.loc[mask, col] = np.nan
+                        st.session_state['df'] = df
+                        st.success(f"**{converted}** blank text values in **`{blank_cols}`** are now missing values.")
 
         # Further Analysis
         new_line()
@@ -64,6 +111,27 @@ def handle_missing_values(df):
                 null_values['Feature'] = null_values.index
                 fig = px.bar(null_values, x='Feature', y='Count', color='Count', height=350)
                 st.plotly_chart(fig, use_container_width=True, key='null_values_heatmap')
+
+        # Find Missing Rows: the row numbers with missing values in one column
+        find_missing = st.checkbox("Find Missing Rows", value=False, key='find_missing')
+        new_line()
+        if find_missing:
+            col_missing = st.selectbox("Select Column", df.columns, key='find_missing_col')
+            rows = df.index[df[col_missing].isnull()].tolist()
+
+            n_blank = int(blank_mask(df[col_missing]).sum())
+            if n_blank:
+                st.info(f"**`{col_missing}`** also has **{n_blank}** blank text values that aren't counted as missing yet. "
+                        "Use **Treat Blank Text as Missing** above to include them.")
+
+            if not rows:
+                st.info(f"**`{col_missing}`** has no missing values.")
+            else:
+                st.write(f"**{len(rows)}** rows have missing values in **`{col_missing}`**. "
+                         "Row numbers (you can paste them into **🕵️‍♂️ Exploratory Data Analysis → Delete Rows**):")
+                st.code(format_row_ranges(rows), language=None)
+                st.dataframe(df.loc[rows], use_container_width=True, height=min(35 * len(rows) + 38, 300))
+            new_line()
 
 
         # INPUT

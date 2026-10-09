@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -52,6 +53,32 @@ def convert_column(s, new_type):
         if bad.any():
             return None, f"{count_values(int(bad.sum()), 'a date', 'dates')}{examples(s[bad])}"
         return dates, None
+
+def parse_row_indices(text, index):
+    # Turn "3, 7, 10-15" into a list of row indices; return (indices, None) or (None, reason)
+    rows = []
+    for part in text.replace(" ", "").split(","):
+        if not part:
+            continue
+        if re.fullmatch(r"\d+", part):
+            rows.append(int(part))
+        elif re.fullmatch(r"\d+-\d+", part):
+            start, end = map(int, part.split("-"))
+            if start > end:
+                return None, f"`{part}` is not a valid range. Write the smaller number first, e.g. `{end}-{start}`"
+            rows.extend(range(start, end + 1))
+        else:
+            return None, f"`{part}` is not a row number or range. Use numbers and ranges, e.g. `3, 7, 10-15`"
+    rows = sorted(set(rows))
+    if not rows:
+        return None, "Please enter at least one row number"
+    missing = [r for r in rows if r not in index]
+    if missing:
+        shown = ", ".join(map(str, missing[:5])) + (f" and {len(missing) - 5} more" if len(missing) > 5 else "")
+        return None, f"These rows don't exist: {shown}. Row numbers go from {index.min()} to {index.max()}"
+    if len(rows) == len(index):
+        return None, "You can't delete every row"
+    return rows, None
 
 def show_eda(df):
     # Assuming necessary imports are available like numpy, pandas, seaborn, matplotlib, etc.
@@ -181,6 +208,35 @@ df.drop(columns={col_to_delete}, inplace=True)
                 df.drop(columns=col_to_delete, inplace=True)
                 st.session_state.df = df
                 st.success(f"The Columns **`{col_to_delete}`** are Deleted Successfully!")
+
+
+        # Delete Rows by index
+        delete_rows = st.checkbox("Delete Rows", value=False)
+        new_line()
+        if delete_rows:
+            rows_text = st.text_input("Row Numbers to Delete", key="rows_to_delete", placeholder="e.g. 3, 7, 10-15",
+                                      help="Use the row numbers shown on the left of the DataFrame. Separate them with commas; use a dash for a range.")
+            if rows_text.strip():
+                rows, problem = parse_row_indices(rows_text, df.index)
+                if problem:
+                    st.warning(f"{problem}.")
+                else:
+                    st.write(f"These **{len(rows)}** rows will be deleted:")
+                    st.dataframe(df.loc[rows], use_container_width=True, height=min(35 * len(rows) + 38, 300))
+
+                new_line()
+                col1, col2, col3 = st.columns([1,0.7,1])
+                if col2.button("Delete", use_container_width=True, key="delete_rows_apply", disabled=bool(problem)):
+                    st.session_state.all_the_process += f"""
+# Delete Rows
+df.drop(index={rows}, inplace=True)
+df.reset_index(drop=True, inplace=True)
+\n """
+                    progress_bar()
+                    df.drop(index=rows, inplace=True)
+                    df.reset_index(drop=True, inplace=True)
+                    st.session_state.df = df
+                    st.success(f"**{len(rows)}** rows have been deleted. The remaining **{len(df)}** rows have been renumbered from 0.")
 
 
         # Remove Duplicate Rows (rows identical in every column)
