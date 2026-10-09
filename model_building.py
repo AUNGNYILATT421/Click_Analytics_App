@@ -552,7 +552,7 @@ model.fit(X_train, y_train)
                         n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
             
                     with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.0001, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
+                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
             
                     with col3:
                         booster = st.selectbox("Booster (Optional)", ["gbtree", "gblinear", "dart"], key='booster')
@@ -579,7 +579,7 @@ model.fit(X_train, y_train)
                         n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
             
                     with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.1, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
+                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
             
                     with col3:
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["gbdt", "dart", "goss"], key='boosting_type')
@@ -606,7 +606,7 @@ model.fit(X_train, y_train)
                         n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
             
                     with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.1, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
+                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
             
                     with col3:
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["Ordered", "Plain"], key='boosting_type')
