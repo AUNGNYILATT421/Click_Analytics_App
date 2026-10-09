@@ -56,18 +56,26 @@ model.fit(X_train, y_train)
 \n """
     return Pipeline(steps + [("model", model)]).set_output(transform="pandas")
 
-def find_training_problems():
-    # Check all the split data (train + validation + test) that the model will be trained and evaluated on
+def split_data_parts():
+    # All the split data (train + validation + test) that the model will be trained and evaluated on
     X_parts = [st.session_state[k] for k in ('X_train', 'X_val', 'X_test') if st.session_state.get(k) is not None]
     y_parts = [st.session_state[k] for k in ('y_train', 'y_val', 'y_test') if st.session_state.get(k) is not None]
     X, y = pd.concat(X_parts), pd.concat(y_parts)
-    data = pd.concat([X, y], axis=1)
+    return X, y, pd.concat([X, y], axis=1)
+
+def count_duplicate_rows():
+    return int(split_data_parts()[2].duplicated().sum())
+
+def find_training_problems():
+    X, y, data = split_data_parts()
     problems = []
 
+    # Duplicate rows block training unless the user chose to train with them
     n_dup = int(data.duplicated().sum())
-    if n_dup:
+    if n_dup and not st.session_state.get('allow_duplicates', False):
         problems.append(f"**Duplicate rows:** {n_dup} rows are exact copies of another row. "
-                        "Remove them in **🕵️‍♂️ Exploratory Data Analysis → Remove Duplicate Rows**.")
+                        "Remove them in **🕵️‍♂️ Exploratory Data Analysis → Remove Duplicate Rows**, "
+                        "or tick **Train with duplicate rows** above.")
 
     # Duplicate columns: same name. When a file has a repeated header,
     # pandas renames the copies "age" -> "age.1", "age.2", so those count as the same name
@@ -176,6 +184,11 @@ def display_model_building_options(X_train, y_train):
         # Block training until the split data is clean, and tell the user why
         training_problems = []
         if problem_type in ("Classification", "Regression") and model != "Select":
+            n_dup = count_duplicate_rows()
+            if n_dup:
+                st.checkbox(f"Train with duplicate rows ({n_dup} rows are exact copies of another row)", value=False, key='allow_duplicates',
+                            help="Duplicate rows can be genuine (e.g. two records with the same details). Note: copies of the same row "
+                                 "may end up in both the train and test sets, which can make the test score look better than it really is.")
             training_problems = find_training_problems()
             if training_problems:
                 st.warning("**Training is disabled** until these issues are fixed:\n\n"
