@@ -8,6 +8,51 @@ from wordcloud import WordCloud
 from utils import new_line
 from progress_bar import progress_bar
 
+def count_values(n, singular, plural):
+    return f"{n} value isn't {singular}" if n == 1 else f"{n} values aren't {plural}"
+
+def examples(values, n=3):
+    shown = ", ".join(f"`{v}`" for v in pd.unique(values)[:n])
+    return f" (e.g. {shown})"
+
+def convert_column(s, new_type):
+    # Return (converted Series, None), or (None, reason) when some values can't be converted
+    if new_type in ("Integer", "Float"):
+        num = pd.to_numeric(s, errors='coerce')
+        bad = num.isna() & s.notna()
+        if bad.any():
+            return None, f"{count_values(int(bad.sum()), 'a number', 'numbers')}{examples(s[bad])}"
+        if new_type == "Float":
+            return num.astype(float), None
+        if num.isna().any():
+            return None, "it has missing values, which Integer can't hold. Fill them first, or choose Float"
+        if (num % 1 != 0).any():
+            return None, f"it has decimal values{examples(num[num % 1 != 0])}, which would be cut off. Choose Float instead"
+        return num.astype("int64"), None
+
+    if new_type == "Text":
+        # Keep missing values missing instead of turning them into the text "nan"
+        return s.astype(object).where(s.isna(), s.astype(str)), None
+
+    if new_type == "Boolean":
+        if s.isna().any():
+            return None, "it has missing values, which Boolean can't hold. Fill them first"
+        mapping = {"true": True, "false": False, "yes": True, "no": False, "1": True, "0": False, "1.0": True, "0.0": False}
+        mapped = s.astype(str).str.strip().str.lower().map(mapping)
+        bad = mapped.isna()
+        if bad.any():
+            return None, f"{count_values(int(bad.sum()), 'True/False, Yes/No or 1/0', 'True/False, Yes/No or 1/0')}{examples(s[bad])}"
+        return mapped.astype(bool), None
+
+    if new_type == "Datetime":
+        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
+            return None, "numbers can't be converted to dates directly"
+        dates = pd.to_datetime(s, errors='coerce', format='mixed')
+        bad = dates.isna() & s.notna()
+        if bad.any():
+            return None, f"{count_values(int(bad.sum()), 'a date', 'dates')}{examples(s[bad])}"
+        return dates, None
+
 def show_eda(df):
     # Assuming necessary imports are available like numpy, pandas, seaborn, matplotlib, etc.
     st.markdown("### 🕵️‍♂️ Exploratory Data Analysis", unsafe_allow_html=True)
@@ -159,6 +204,43 @@ df.reset_index(drop=True, inplace=True)
                     df.reset_index(drop=True, inplace=True)
                     st.session_state.df = df
                     st.success(f"**{n_dup}** duplicate rows have been removed.")
+
+
+        # Change Data Type
+        change_type = st.checkbox("Change Data Type", value=False)
+        new_line()
+        if change_type:
+            col1, col2 = st.columns(2)
+            with col1:
+                cols_to_convert = st.multiselect("Select Columns to Convert", df.columns, key="convert_cols")
+            with col2:
+                new_type = st.selectbox("Convert To", ["Select", "Integer", "Float", "Text", "Boolean", "Datetime"], key="convert_type")
+
+            if cols_to_convert and new_type != "Select":
+                converted, problems = {}, []
+                for col in cols_to_convert:
+                    result, problem = convert_column(df[col], new_type)
+                    if problem:
+                        problems.append(f"- **`{col}`**: {problem}.")
+                    else:
+                        converted[col] = result
+
+                # Don't convert anything until every selected column can be converted
+                if problems:
+                    st.warning(f"These columns can't be converted to **{new_type}**:\n\n" + "\n".join(problems))
+
+                new_line()
+                col1, col2, col3 = st.columns([1,0.7,1])
+                if col2.button("Convert", use_container_width=True, key="convert_apply", disabled=bool(problems)):
+                    st.session_state.all_the_process += f"""
+# Change Data Type to {new_type}
+# columns: {cols_to_convert}
+\n """
+                    progress_bar()
+                    for col, result in converted.items():
+                        df[col] = result
+                    st.session_state.df = df
+                    st.success(f"The Columns **`{cols_to_convert}`** have been converted to **{new_type}**.")
 
 
         # Show DataFrame Button
