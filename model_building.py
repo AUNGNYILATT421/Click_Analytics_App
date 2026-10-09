@@ -184,10 +184,14 @@ def display_model_building_options(X_train, y_train):
 
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        penalty = st.selectbox("Penalty (Optional)", ["l2", "l1", None, "elasticnet"], key='penalty')
+                        penalty = st.selectbox("Penalty (Optional)", ["l2", "l1", None], key='penalty')
 
                     with col2:
-                        solver = st.selectbox("Solver (Optional)", ["lbfgs", "newton-cg", "liblinear", "sag", "saga"], key='solver')
+                        # Only offer the solvers that support the chosen penalty
+                        solvers = {"l2": ["lbfgs", "newton-cg", "liblinear", "sag", "saga"],
+                                   "l1": ["liblinear", "saga"],
+                                   None: ["lbfgs", "newton-cg", "sag", "saga"]}[penalty]
+                        solver = st.selectbox("Solver (Optional)", solvers, key='solver')
 
                     with col3:
                         C = st.number_input("C (Optional)", min_value=1e-5, max_value=1.0, value=1.0, step=0.05, key='C')
@@ -330,7 +334,7 @@ model.fit(X_train, y_train)
                         n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
             
                     with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.0, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
+                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
             
                     with col3:
                         booster = st.selectbox("Booster (Optional)", ["gbtree", "gblinear", "dart"], key='booster')
@@ -357,7 +361,7 @@ model.fit(X_train, y_train)
                         n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
             
                     with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.0, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
+                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
             
                     with col3:
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["gbdt", "dart", "goss"], key='boosting_type')
@@ -384,7 +388,7 @@ model.fit(X_train, y_train)
                         n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
             
                     with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.0, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
+                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
             
                     with col3:
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["Ordered", "Plain"], key='boosting_type')
