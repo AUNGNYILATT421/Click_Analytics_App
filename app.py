@@ -671,8 +671,9 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
         st.dataframe(df, use_container_width=True)
 
     # Build the CSV in memory instead of writing df.csv to disk on every rerun
-    df_bytes = st.session_state.df.to_csv(index=False).encode('utf-8')
-    if col2.download_button("📌 Download df", df_bytes, "df.csv", key='save_df', use_container_width=True):
+    # Build the CSV only when the button is clicked: converting a wide DataFrame on every rerun is slow
+    df_for_download = st.session_state.df
+    if col2.download_button("📌 Download df", lambda: df_for_download.to_csv(index=False).encode('utf-8'), "df.csv", key='save_df', use_container_width=True):
         st.success("Downloaded Successfully!")
 
 

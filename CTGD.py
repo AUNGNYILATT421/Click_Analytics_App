@@ -100,6 +100,10 @@ def handle_categorical_data(st, df):
                 # Perform encoding based on the selected method
                 apply_encoding(df, enc_feat, encoding, st)
 
+        # Message from an encoding that reran the page (One Hot Encoding)
+        if 'encoding_message' in st.session_state:
+            st.success(st.session_state.pop('encoding_message'))
+
         # Show DataFrame Button
         col1, col2, col3 = st.columns([0.15, 1, 0.15])
         col2.divider()
@@ -117,11 +121,12 @@ def apply_encoding(df, features, method, st):
         st.success(f"The Categories of the features **`{features}`** have been encoded using Ordinal Encoding.")
         
     elif method == "One Hot Encoding":
-        # Modify df in place (like the other encodings) so the change is kept in session state
+        # Build the encoded DataFrame in one step: adding many dummy columns one by one fragments it
+        # (pandas PerformanceWarning). Then rerun so every section of the page uses the new DataFrame
         dummies = pd.get_dummies(df[features], columns=features, drop_first=True)
-        df.drop(columns=features, inplace=True)
-        df[dummies.columns] = dummies
-        st.success(f"The Categories of the features **`{features}`** have been encoded using One Hot Encoding.")
+        st.session_state['df'] = pd.concat([df.drop(columns=features), dummies], axis=1)
+        st.session_state['encoding_message'] = f"The Categories of the features **`{features}`** have been encoded using One Hot Encoding."
+        st.rerun()
 
     elif method == "Count Frequency Encoding":
         for feature in features:

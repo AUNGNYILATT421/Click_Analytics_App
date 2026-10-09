@@ -102,15 +102,13 @@ X_train, X_test, y_train, y_test = train_test_split(df.drop('{target}', axis=1),
                 st.write(f"X Train Shape: {X_train.shape}")
                 st.write(f"y Train Shape: {y_train.shape}")
                 train = pd.concat([X_train, y_train], axis=1)
-                train_csv = train.to_csv(index=False).encode('utf-8')
-                st.download_button("Download Train Set", train_csv, "train.csv", "text/csv", key='train2')
+                st.download_button("Download Train Set", lambda: train.to_csv(index=False).encode('utf-8'), "train.csv", "text/csv", key='train2', on_click="ignore")
             with col2:
                 st.write("Test")
                 st.write(f"X Test Shape: {X_test.shape}")
                 st.write(f"y Test Shape: {y_test.shape}")
                 test = pd.concat([X_test, y_test], axis=1)
-                test_csv = test.to_csv(index=False).encode('utf-8')
-                st.download_button("Download Test Set", test_csv, "test.csv", "text/csv", key='test2')
+                st.download_button("Download Test Set", lambda: test.to_csv(index=False).encode('utf-8'), "test.csv", "text/csv", key='test2', on_click="ignore")
 
 def train_val_test_split_ui(df, target, train_size, val_size, test_size):
     if float(train_size + val_size + test_size) != 1.0:
@@ -145,24 +143,21 @@ X_val, X_test, y_val, y_test = train_test_split(X_rem, y_rem, train_size= {val_s
                     st.write(f"X Train Shape: {X_train.shape}")
                     st.write(f"y Train Shape: {y_train.shape}")
                     train = pd.concat([X_train, y_train], axis=1)
-                    train_csv = train.to_csv(index=False).encode("utf-8")
-                    st.download_button("Download Train Set", train_csv, "train.csv", "text/csv", key="train3")
+                    st.download_button("Download Train Set", lambda: train.to_csv(index=False).encode("utf-8"), "train.csv", "text/csv", key="train3", on_click="ignore")
 
                 with col2:
                     st.subheader("Valid")
                     st.write(f"X Val Shape: {X_val.shape}")
                     st.write(f"y Val Shape: {y_val.shape}")
                     val = pd.concat([X_val, y_val], axis=1)
-                    val_csv = val.to_csv(index=False).encode("utf-8")
-                    st.download_button("Download Validation Set", val_csv, "validation.csv", "text/csv", key="val3")
+                    st.download_button("Download Validation Set", lambda: val.to_csv(index=False).encode("utf-8"), "validation.csv", "text/csv", key="val3", on_click="ignore")
 
                 with col3:
                     st.subheader("Test")
                     st.write(f"X Test Shape: {X_test.shape}")
                     st.write(f"y Test Shape: {y_test.shape}")
                     test = pd.concat([X_test, y_test], axis=1)
-                    test_csv = test.to_csv(index=False).encode("utf-8")
-                    st.download_button("Download Test Set", test_csv, "test.csv", "text/csv", key="test3")
+                    st.download_button("Download Test Set", lambda: test.to_csv(index=False).encode("utf-8"), "test.csv", "text/csv", key="test3", on_click="ignore")
 
 
 def split_data(df):

@@ -72,8 +72,15 @@ def find_training_problems():
     # Duplicate columns: same name. When a file has a repeated header,
     # pandas renames the copies "age" -> "age.1", "age.2", so those count as the same name
     names = [str(c) for c in data.columns]
-    base = [re.sub(r"\.\d+$", "", n) if re.sub(r"\.\d+$", "", n) in names else n for n in names]
-    dup_pairs = [f"`{names[i]}` and `{names[j]}`" for i in range(len(names)) for j in range(i) if base[i] == base[j]]
+    name_set = set(names)
+    base = [re.sub(r"\.\d+$", "", n) if re.sub(r"\.\d+$", "", n) in name_set else n for n in names]
+    # One pass with a dict instead of comparing every pair of columns (slow for thousands of columns)
+    first_with_name, dup_pairs = {}, []
+    for name, b in zip(names, base):
+        if b in first_with_name:
+            dup_pairs.append(f"`{name}` and `{first_with_name[b]}`")
+        else:
+            first_with_name[b] = name
     if dup_pairs:
         problems.append(f"**Duplicate columns:** {', '.join(dup_pairs)} have the same name. "
                         "Remove one column of each pair in **🕵️‍♂️ Exploratory Data Analysis → Delete Columns**.")
