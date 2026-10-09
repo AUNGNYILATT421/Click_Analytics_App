@@ -8,6 +8,7 @@ import plotly.express as px
 from wordcloud import WordCloud
 from utils import new_line
 from progress_bar import progress_bar
+from missing_values_handler import format_row_ranges
 
 def count_values(n, singular, plural):
     return f"{n} value isn't {singular}" if n == 1 else f"{n} values aren't {plural}"
@@ -238,6 +239,25 @@ df.reset_index(drop=True, inplace=True)
                     st.session_state.df = df
                     st.success(f"**{len(rows)}** rows have been deleted. The remaining **{len(df)}** rows have been renumbered from 0.")
 
+
+        # Show Duplicate Rows (rows identical in every column), with identical rows next to each other
+        show_dup = st.checkbox("Show Duplicate Rows", value=False)
+        new_line()
+        if show_dup:
+            involved = df.duplicated(keep=False)
+            if not involved.any():
+                st.info("There are no duplicate rows.")
+            else:
+                copies = df.index[df.duplicated(keep="first")].tolist()
+                groups = df[involved].groupby(list(df.columns), dropna=False, sort=False).ngroup() + 1
+                dup_rows = df[involved].assign(**{"Duplicate Group": groups}).sort_values("Duplicate Group", kind="stable")
+                dup_rows = dup_rows[["Duplicate Group"] + [c for c in df.columns]]
+                st.write(f"**{len(copies)}** rows are exact copies of an earlier row, in **{groups.nunique()}** groups of identical rows. "
+                         "Rows in the same group are identical:")
+                st.dataframe(dup_rows, use_container_width=True, height=min(35 * len(dup_rows) + 38, 400))
+                st.write("Row numbers of the copies (the first row of each group is kept). "
+                         "**Remove Duplicate Rows** below deletes exactly these, or paste them into **Delete Rows**:")
+                st.code(format_row_ranges(copies), language=None)
 
         # Remove Duplicate Rows (rows identical in every column)
         remove_dup = st.checkbox("Remove Duplicate Rows", value=False)
