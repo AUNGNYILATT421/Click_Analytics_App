@@ -5,11 +5,13 @@
 ## 🚀 Features
 
 ### 📁 Data Handling
+
 - Upload CSV datasets
 - Preview data and schema
 - Handle missing values (mean, median, mode, etc.)
 
 ### 🔍 Exploratory Data Analysis (EDA)
+
 - Summary statistics
 - Distribution plots
 - Correlation analysis
@@ -17,16 +19,19 @@
 - Interactive Plotly charts
 
 ### 🧹 Feature Engineering
+
 - Encoding categorical features
 - Scaling and transformations
 - Safe log / power transformations
 
 ### ✂️ Data Splitting
+
 - Train / Test split
 - Train / Validation / Test split
 - Download split datasets as CSV
 
 ### 🤖 Model Building
+
 - Train ML models using:
   - XGBoost
   - LightGBM
@@ -36,6 +41,7 @@
 - Session-based model tracking
 
 ### 📈 Model Evaluation
+
 - Classification & regression metrics
 - ROC Curve visualization
 - Predictions on train / validation / test sets
@@ -47,13 +53,13 @@
 - **Frontend / App:** Streamlit
 - **Data:** Pandas, NumPy
 - **Visualization:** Matplotlib, Seaborn, Plotly
-- **Machine Learning:**  
-  - Scikit-learn  
-  - XGBoost  
-  - LightGBM  
+- **Machine Learning:**
+  - Scikit-learn
+  - XGBoost
+  - LightGBM
   - CatBoost
 - **Deployment:** Streamlit Cloud
-- **Python Version:** 3.11
+- **Python Version:** 3.12
 
 ---
 
@@ -64,3 +70,4 @@ git clone https://github.com/AUNGNYILATT421/Click_Analytics_App.git
 cd Click_Analytics_App
 pip install -r requirements.txt
 streamlit run app.py
+```
