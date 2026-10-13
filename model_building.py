@@ -107,7 +107,13 @@ def find_training_problems():
 
     return problems
 
-def fit_and_store(model, X_train, y_train, col):
+def model_bytes(model):
+    # Serialize the model in memory (not to a shared file on disk)
+    buffer = io.BytesIO()
+    joblib.dump(model, buffer)
+    return buffer.getvalue()
+
+def fit_and_store(model, X_train, y_train):
     # Mark the model as trained only after fit succeeds, so evaluation never uses a stale model
     if X_train is None or y_train is None:
         st.session_state['trained_model_bool'] = False
@@ -123,9 +129,9 @@ def fit_and_store(model, X_train, y_train, col):
         logging.exception("Model training failed")
         st.session_state['trained_model'] = None
         st.session_state['trained_model_bool'] = False
-        st.error("Sorry, the model couldn't be trained with the current data and settings. "
-                 "Please check your data and model options, then try again.", icon="⚠️")
-        return
+        st.session_state['train_message'] = ("error", "Sorry, the model couldn't be trained with the current data and settings. "
+                                                      "Please check your data and model options, then try again.")
+        st.rerun()
 
     st.session_state['trained_model'] = model
     st.session_state['trained_model_bool'] = True
@@ -135,12 +141,10 @@ def fit_and_store(model, X_train, y_train, col):
     st.session_state['models_with_eval'] = {}
     st.session_state['metrics_df'] = pd.DataFrame()
     st.session_state['perm_importance'] = None
-    st.success("Model Trained Successfully!")
 
-    # Download the model (serialized in memory, not to a shared file on disk)
-    buffer = io.BytesIO()
-    joblib.dump(model, buffer)
-    col.download_button("Download Model", buffer.getvalue(), "model.pkl", use_container_width=True, key='save_model')
+    # Rerun so the Train Model button is enabled again; the message is shown after the rerun
+    st.session_state['train_message'] = ("success", "Model Trained Successfully!")
+    st.rerun()
 
 def show_permutation_importance(model, X_test, y_test):
     # Model-agnostic importance: how much the test score drops when one feature's values are shuffled
@@ -226,6 +230,11 @@ def display_model_building_options(X_train, y_train):
                            + "\n".join(f"- {problem}" for problem in training_problems)
                            + "\n\nAfter fixing them, please **split the data again**.")
 
+        # A click on Train Model starts a new run. Read the click from session state before drawing the button,
+        # so the button can be drawn disabled for the whole training (a disabled button itself returns False)
+        train_clicked = bool(st.session_state.get('train_model', False)) and not training_problems
+        train_disabled = bool(training_problems) or train_clicked
+
 
         if target != "Select" and problem_type and model:
             
@@ -249,7 +258,8 @@ def display_model_building_options(X_train, y_train):
 
                     
                     col1, col2, col3 = st.columns([1,1,1])
-                    if col2.button("Train Model", disabled=bool(training_problems), use_container_width=True):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
+                    if train_clicked:
                         
                         
                         progress_bar()
@@ -264,7 +274,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.linear_model import LogisticRegression
                         model = LogisticRegression(penalty=penalty, solver=solver, C=C, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "K-Nearest Neighbors":
 
@@ -280,7 +290,8 @@ model.fit(X_train, y_train)
 
                     
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems), use_container_width=True):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
+                    if train_clicked:
                         progress_bar()
 
 
@@ -293,7 +304,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.neighbors import KNeighborsClassifier
                         model = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights, algorithm=algorithm)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "Support Vector Machine":
                         
@@ -309,7 +320,8 @@ model.fit(X_train, y_train)
     
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems), use_container_width=True):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
+                    if train_clicked:
 
                         progress_bar()
     
@@ -322,7 +334,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.svm import SVC
                         model = SVC(kernel=kernel, degree=degree, C=C, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "Decision Tree":
                             
@@ -337,7 +349,8 @@ model.fit(X_train, y_train)
                         min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=100, value=2, step=1, key='min_samples_split')
                             
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems), use_container_width=True):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
+                    if train_clicked:
                         progress_bar()
         
                         # Train the model
@@ -349,7 +362,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.tree import DecisionTreeClassifier
                         model = DecisionTreeClassifier(criterion=criterion, splitter=splitter, min_samples_split=min_samples_split, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "Random Forest":
                                 
@@ -364,7 +377,8 @@ model.fit(X_train, y_train)
                         min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=100, value=2, step=1, key='min_samples_split')
                                 
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems), use_container_width=True):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -376,7 +390,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.ensemble import RandomForestClassifier
                         model = RandomForestClassifier(n_estimators=n_estimators, criterion=criterion, min_samples_split=min_samples_split, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "XGBoost":
 
@@ -391,7 +405,8 @@ model.fit(X_train, y_train)
                         booster = st.selectbox("Booster (Optional)", ["gbtree", "gblinear", "dart"], key='booster')
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -403,7 +418,7 @@ model.fit(X_train, y_train)
 \n """
                         from xgboost import XGBClassifier
                         model = XGBClassifier(n_estimators=n_estimators, learning_rate=learning_rate, booster=booster, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == 'LightGBM':
 
@@ -418,7 +433,8 @@ model.fit(X_train, y_train)
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["gbdt", "dart", "goss"], key='boosting_type')
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -430,7 +446,7 @@ model.fit(X_train, y_train)
 \n """
                         from lightgbm import LGBMClassifier
                         model = LGBMClassifier(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == 'CatBoost':
 
@@ -445,7 +461,8 @@ model.fit(X_train, y_train)
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["Ordered", "Plain"], key='boosting_type')
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -457,7 +474,7 @@ model.fit(X_train, y_train)
 \n """
                         from catboost import CatBoostClassifier
                         model = CatBoostClassifier(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type, random_state=42)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
             if problem_type == "Regression":
                  
@@ -474,7 +491,8 @@ model.fit(X_train, y_train)
                         copy_x = st.selectbox("Copy X (Optional)", [True, False], key='copy_x')
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -486,7 +504,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.linear_model import LinearRegression
                         model = LinearRegression(fit_intercept=fit_intercept, positive=positive, copy_X=copy_x)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "K-Nearest Neighbors":
 
@@ -501,7 +519,8 @@ model.fit(X_train, y_train)
                         algorithm = st.selectbox("Algorithm (Optional)", ["auto", "ball_tree", "kd_tree", "brute"], key='algorithm')
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -513,7 +532,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.neighbors import KNeighborsRegressor
                         model = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights, algorithm=algorithm)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "Support Vector Machine":
                     
@@ -528,7 +547,8 @@ model.fit(X_train, y_train)
                         gamma = st.selectbox("Gamma (Optional)", ["scale", "auto"], key='gamma')
                         
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -540,7 +560,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.svm import SVR
                         model = SVR(kernel=kernel, degree=degree, gamma=gamma)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "Decision Tree":
 
@@ -555,7 +575,8 @@ model.fit(X_train, y_train)
                         min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=10, value=2, step=1, key='min_samples_split')
 
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -567,7 +588,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.tree import DecisionTreeRegressor
                         model = DecisionTreeRegressor(criterion=criterion, splitter=splitter, min_samples_split=min_samples_split)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
                 
                 if model == "Random Forest":
 
@@ -582,7 +603,8 @@ model.fit(X_train, y_train)
                         min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=10, value=2, step=1, key='min_samples_split')
 
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -594,7 +616,7 @@ model.fit(X_train, y_train)
 \n """
                         from sklearn.ensemble import RandomForestRegressor
                         model = RandomForestRegressor(n_estimators=n_estimators, criterion=criterion, min_samples_split=min_samples_split)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "XGBoost":
 
@@ -609,7 +631,8 @@ model.fit(X_train, y_train)
                         booster = st.selectbox("Booster (Optional)", ["gbtree", "gblinear", "dart"], key='booster')
 
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -621,7 +644,7 @@ model.fit(X_train, y_train)
 \n """
                         from xgboost import XGBRegressor
                         model = XGBRegressor(n_estimators=n_estimators, learning_rate=learning_rate, booster=booster)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "LightGBM":
 
@@ -636,7 +659,8 @@ model.fit(X_train, y_train)
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["gbdt", "dart", "goss"], key='boosting_type')
 
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -648,7 +672,7 @@ model.fit(X_train, y_train)
 \n """
                         from lightgbm import LGBMRegressor
                         model = LGBMRegressor(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
                 if model == "CatBoost":
 
@@ -663,7 +687,8 @@ model.fit(X_train, y_train)
                         boosting_type = st.selectbox("Boosting Type (Optional)", ["Ordered", "Plain"], key='boosting_type')
 
                     col1, col2, col3 = st.columns([1,0.7,1])
-                    if col2.button("Train Model", disabled=bool(training_problems)):
+                    col2.button("Train Model", disabled=train_disabled, key='train_model')
+                    if train_clicked:
                         progress_bar()
             
                         # Train the model
@@ -675,5 +700,17 @@ model.fit(X_train, y_train)
 \n """
                         from catboost import CatBoostRegressor
                         model = CatBoostRegressor(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type)
-                        fit_and_store(model, X_train, y_train, col2)
+                        fit_and_store(model, X_train, y_train)
 
+        # Shown after training reruns the page: the result, and the trained model's download
+        message = st.session_state.pop('train_message', None)
+        if message:
+            kind, text = message
+            if kind == "success":
+                st.success(text)
+            else:
+                st.error(text, icon="⚠️")
+        trained = st.session_state.get('trained_model')
+        if trained is not None:
+            col1, col2, col3 = st.columns([1, 0.7, 1])
+            col2.download_button("Download Model", lambda: model_bytes(trained), "model.pkl", use_container_width=True, key='save_model')
