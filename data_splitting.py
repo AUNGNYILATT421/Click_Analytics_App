@@ -52,6 +52,7 @@ def clear_trained_model():
     st.session_state['lst_models_predictions'] = []
     st.session_state['models_with_eval'] = {}
     st.session_state['metrics_df'] = pd.DataFrame()
+    st.session_state['perm_importance'] = None
     for key in ('y_pred_train', 'y_pred_val', 'y_pred_test'):
         st.session_state[key] = None
 

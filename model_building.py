@@ -134,12 +134,43 @@ def fit_and_store(model, X_train, y_train, col):
     st.session_state['lst_models_predictions'] = []
     st.session_state['models_with_eval'] = {}
     st.session_state['metrics_df'] = pd.DataFrame()
+    st.session_state['perm_importance'] = None
     st.success("Model Trained Successfully!")
 
     # Download the model (serialized in memory, not to a shared file on disk)
     buffer = io.BytesIO()
     joblib.dump(model, buffer)
     col.download_button("Download Model", buffer.getvalue(), "model.pkl", use_container_width=True, key='save_model')
+
+def show_permutation_importance(model, X_test, y_test):
+    # Model-agnostic importance: how much the test score drops when one feature's values are shuffled
+    from sklearn.inspection import permutation_importance
+    score_name = "accuracy" if st.session_state.get('problem_type') == "Classification" else "R2 score"
+
+    new_line()
+    st.markdown("### Feature Importance")
+    st.write(f"Permutation importance: how much the model's test {score_name} drops when one feature's values are randomly shuffled "
+             "(10 repeats; the gray lines show the spread). Higher means the model relies on the feature more. "
+             "Note: features that carry the same information can both look less important.")
+    col1, col2, col3 = st.columns([1, 0.8, 1])
+    if col2.button("Compute Feature Importance", use_container_width=True, key="perm_importance_apply"):
+        with st.spinner("Computing feature importance..."):
+            result = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42)
+        st.session_state['perm_importance'] = pd.DataFrame({"feature": X_test.columns.astype(str),
+                                                            "mean": result.importances_mean,
+                                                            "std": result.importances_std}).sort_values("mean", ascending=False)
+
+    importance = st.session_state.get('perm_importance')
+    if importance is not None:
+        top = importance.head(20).iloc[::-1]   # most important feature at the top of the plot
+        fig, ax = plt.subplots(figsize=(7, max(2.5, 0.35 * len(top) + 1)))
+        ax.barh(top["feature"], top["mean"], xerr=top["std"], color="skyblue", ecolor="gray", capsize=3)
+        ax.axvline(0, color="black", linewidth=0.8)
+        ax.set_xlabel(f"Drop in test {score_name}")
+        ax.set_title("Permutation Feature Importance" + (f" (top 20 of {len(importance)})" if len(importance) > 20 else ""))
+        fig.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
 
 def display_model_building_options(X_train, y_train):
 

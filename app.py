@@ -659,6 +659,9 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
                         # plot_confusion_matrix(model, X_test, y_test, ax=ax)
                         # col2.pyplot(fig)
 
+            # Feature Importance (works for every model, including Pipelines)
+            show_permutation_importance(model, st.session_state.X_test, st.session_state.y_test)
+
                      
     st.divider()          
     col1, col2, col3= st.columns(3, gap='small')        
