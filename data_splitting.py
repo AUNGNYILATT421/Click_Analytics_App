@@ -53,8 +53,15 @@ def clear_trained_model():
     st.session_state['models_with_eval'] = {}
     st.session_state['metrics_df'] = pd.DataFrame()
     st.session_state['perm_importance'] = None
+    st.session_state['automl_leaderboard'] = None
     for key in ('y_pred_train', 'y_pred_val', 'y_pred_test'):
         st.session_state[key] = None
+
+def plain_column_names(*frames):
+    # scikit-learn 1.4.2 (used inside FLAML) can't read pandas 3's text-typed column names,
+    # so the split data stores its column names as plain Python objects
+    for frame in frames:
+        frame.columns = pd.Index(list(frame.columns), dtype=object)
 
 def record_split():
     # Remember which data this split was made from, and drop any model trained on an earlier split
@@ -86,6 +93,7 @@ from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(df.drop('{target}', axis=1), df['{target}'], train_size={train_size}, random_state=42)
 \n """
             X_train, X_test, y_train, y_test = train_test_split(df.drop(target, axis=1), df[target], train_size=train_size, random_state=42)
+            plain_column_names(X_train, X_test)
             st.session_state['X_train'] = X_train
             st.session_state['X_test'] = X_test
             st.session_state['y_train'] = y_train
@@ -127,6 +135,7 @@ X_val, X_test, y_val, y_test = train_test_split(X_rem, y_rem, train_size= {val_s
 \n """
                 X_train, X_rem, y_train, y_rem = train_test_split(df.drop(target, axis=1), df[target], train_size=train_size, random_state=42)
                 X_val, X_test, y_val, y_test = train_test_split(X_rem, y_rem, train_size=val_size / (1.0 - train_size), random_state=42)
+                plain_column_names(X_train, X_val, X_test)
                 st.session_state['X_train'] = X_train
                 st.session_state['X_val'] = X_val
                 st.session_state['X_test'] = X_test

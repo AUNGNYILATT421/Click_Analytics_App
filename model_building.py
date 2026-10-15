@@ -20,6 +20,7 @@ from transformation_functions import display_transformation_options
 from feature_engineering import extract_feature, transform_feature, select_feature, show_dataframe
 from data_splitting import split_data
 from progress_bar import progress_bar
+from flaml import AutoML
 import io
 import re
 import logging
@@ -54,7 +55,9 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 model = Pipeline([{step_code}, ('model', model)])
 model.fit(X_train, y_train)
 \n """
-    return Pipeline(steps + [("model", model)]).set_output(transform="pandas")
+    # No set_output(transform="pandas") here: with pandas 3 it would give the data text-typed column names again,
+    # which scikit-learn 1.4.2 (inside FLAML) can't read. FLAML works fine with the plain arrays instead
+    return Pipeline(steps + [("model", model)])
 
 def split_data_parts():
     # All the split data (train + validation + test) that the model will be trained and evaluated on
@@ -113,28 +116,84 @@ def model_bytes(model):
     joblib.dump(model, buffer)
     return buffer.getvalue()
 
-def fit_and_store(model, X_train, y_train):
-    # Mark the model as trained only after fit succeeds, so evaluation never uses a stale model
+# Automated model training with FLAML: model types users can choose from (label -> FLAML name)
+AUTOML_MODELS = {
+    "Classification": {"LightGBM": "lgbm", "XGBoost": "xgboost", "XGBoost (limited depth)": "xgb_limitdepth",
+                       "Random Forest": "rf", "Extra Trees": "extra_tree", "CatBoost": "catboost",
+                       "Logistic Regression (L1)": "lrl1", "Logistic Regression (L2)": "lrl2", "K-Nearest Neighbors": "kneighbor"},
+    "Regression": {"LightGBM": "lgbm", "XGBoost": "xgboost", "XGBoost (limited depth)": "xgb_limitdepth",
+                   "Random Forest": "rf", "Extra Trees": "extra_tree", "CatBoost": "catboost", "K-Nearest Neighbors": "kneighbor"},
+}
+# FLAML's usual selection; slower K-Nearest Neighbors and L2 Logistic Regression are off by default
+DEFAULT_AUTOML_MODELS = ["LightGBM", "XGBoost", "XGBoost (limited depth)", "Random Forest", "Extra Trees", "CatBoost", "Logistic Regression (L1)"]
+AUTOML_METRICS = {
+    "Classification": {"Accuracy": "accuracy", "ROC AUC": "roc_auc", "F1 Score": "f1", "Log Loss": "log_loss"},
+    "Regression": {"R2 Score": "r2", "Mean Absolute Error (MAE)": "mae", "Mean Squared Error (MSE)": "mse",
+                   "Root Mean Squared Error (RMSE)": "rmse"},
+}
+# FLAML stores results as a loss: 1 - score for these "higher is better" metrics, the metric itself for the others
+LOWER_IS_BETTER = {"log_loss", "mae", "mse", "rmse"}
+
+def flaml_metric(metric, y_train):
+    # ROC AUC and F1 need their multiclass versions when the target has more than two classes
+    if pd.Series(y_train).nunique() > 2:
+        return {"roc_auc": "roc_auc_ovr", "f1": "macro_f1"}.get(metric, metric)
+    return metric
+
+def automl_leaderboard(automl, metric, metric_label, problem_type):
+    # Best validation score of each model type FLAML tried, best first
+    names = {v: k for k, v in AUTOML_MODELS[problem_type].items()}
+    rows = []
+    for estimator, loss in automl.best_loss_per_estimator.items():
+        if loss is None or not np.isfinite(loss):
+            continue
+        score = loss if metric in LOWER_IS_BETTER else 1 - loss
+        rows.append({"Model": names.get(estimator, estimator) + (" 🏆" if estimator == automl.best_estimator else ""),
+                     f"Best validation {metric_label}": round(float(score), 4)})
+    board = pd.DataFrame(rows)
+    if not board.empty:
+        board = board.sort_values(board.columns[1], ascending=metric in LOWER_IS_BETTER).reset_index(drop=True)
+        board.index += 1
+    return board
+
+def fit_and_store(X_train, y_train, problem_type, metric_label, model_labels, time_budget):
+    # Mark the model as trained only after the search succeeds, so evaluation never uses a stale model
     if X_train is None or y_train is None:
         st.session_state['trained_model_bool'] = False
         st.error("Please split the data before training a model.")
         return
 
-    model = add_training_preprocessing(model)
+    metric = flaml_metric(AUTOML_METRICS[problem_type][metric_label], y_train)
+    estimators = [AUTOML_MODELS[problem_type][label] for label in model_labels]
+    settings = dict(task=problem_type.lower(), metric=metric, estimator_list=estimators, time_budget=time_budget, seed=42, verbose=0)
+
+    st.session_state.all_the_process += f"""
+# Model Building --> Automated machine learning (FLAML)
+from flaml import AutoML
+model = AutoML()
+model.fit(X_train, y_train, {", ".join(f"{k}={v!r}" for k, v in settings.items())})
+\n """
+    automl = AutoML()
+    model = add_training_preprocessing(automl)
+    # A Pipeline passes the search settings to its last step (the AutoML search) as "model__<setting>"
+    fit_settings = {f"model__{k}": v for k, v in settings.items()} if isinstance(model, Pipeline) else settings
 
     try:
-        model.fit(X_train, y_train)
+        with st.spinner(f"Searching for the best model (up to {time_budget} seconds)..."):
+            model.fit(X_train, y_train, **fit_settings)
     except Exception:
         # Full details go to the server logs; users see a friendly message
         logging.exception("Model training failed")
         st.session_state['trained_model'] = None
         st.session_state['trained_model_bool'] = False
+        st.session_state['automl_leaderboard'] = None
         st.session_state['train_message'] = ("error", "Sorry, the model couldn't be trained with the current data and settings. "
                                                       "Please check your data and model options, then try again.")
         st.rerun()
 
     st.session_state['trained_model'] = model
     st.session_state['trained_model_bool'] = True
+    st.session_state['automl_leaderboard'] = automl_leaderboard(automl, metric, metric_label, problem_type)
 
     # Forget cached predictions and metrics so the new model is evaluated from scratch
     st.session_state['lst_models_predictions'] = []
@@ -143,8 +202,32 @@ def fit_and_store(model, X_train, y_train):
     st.session_state['perm_importance'] = None
 
     # Rerun so the Train Model button is enabled again; the message is shown after the rerun
-    st.session_state['train_message'] = ("success", "Model Trained Successfully!")
+    best = {v: k for k, v in AUTOML_MODELS[problem_type].items()}.get(automl.best_estimator, automl.best_estimator)
+    st.session_state['train_message'] = ("success", f"Model Trained Successfully! The best model is **{best}**.")
     st.rerun()
+
+def auc_score(model, X, y):
+    # AUC is computed from predicted probabilities (not predicted labels); one-vs-rest for more than two classes
+    from sklearn.metrics import roc_auc_score
+    proba = model.predict_proba(X)
+    try:
+        if proba.shape[1] == 2:
+            return roc_auc_score(y, proba[:, 1])
+        return roc_auc_score(y, proba, multi_class="ovr", labels=model.classes_)
+    except ValueError:
+        return np.nan   # e.g. a set that contains only one class: AUC isn't defined
+
+def plot_multiclass_roc(model, X_test, y_test):
+    # One ROC curve per class (that class vs. all others) on the test set
+    from sklearn.metrics import RocCurveDisplay
+    proba = model.predict_proba(X_test)
+    fig, ax = plt.subplots()
+    for i, label in enumerate(model.classes_):
+        RocCurveDisplay.from_predictions(y_test == label, proba[:, i], name=f"Class {label}", ax=ax)
+    ax.set_title("ROC curves on the test set (each class vs. the rest)")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    return fig
 
 def show_permutation_importance(model, X_test, y_test):
     # Model-agnostic importance: how much the test score drops when one feature's values are shuffled
@@ -159,7 +242,8 @@ def show_permutation_importance(model, X_test, y_test):
     col1, col2, col3 = st.columns([1, 0.8, 1])
     if col2.button("Compute Feature Importance", use_container_width=True, key="perm_importance_apply"):
         with st.spinner("Computing feature importance..."):
-            result = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42)
+            scoring = "accuracy" if st.session_state.get('problem_type') == "Classification" else "r2"
+            result = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42, scoring=scoring)
         st.session_state['perm_importance'] = pd.DataFrame({"feature": X_test.columns.astype(str),
                                                             "mean": result.importances_mean,
                                                             "std": result.importances_std}).sort_values("mean", ascending=False)
@@ -181,528 +265,64 @@ def display_model_building_options(X_train, y_train):
     new_line()
     st.markdown("### 🤖 Building the Model")
     new_line()
-    problem_type = ""
-    with st.expander(" Model Building"):    
-        
-        target, problem_type, model = "", "", ""
-        col1, col2, col3 = st.columns(3)
+    with st.expander(" Model Building"):
+        st.write("Automated machine learning (FLAML): the app tries several model types, tunes their settings within the "
+                 "time budget, and keeps the model with the best validation score.")
 
+        col1, col2 = st.columns(2)
         with col1:
-            target = st.selectbox("Target Variable", [st.session_state['target_variable']] , key='target_ml', help="The target variable is the variable that you want to predict")
-            new_line()
-
+            st.selectbox("Target Variable", [st.session_state['target_variable']], key='target_ml', help="The target variable is the variable that you want to predict")
         with col2:
             problem_type = st.selectbox("Problem Type", ["Select", "Classification", "Regression"], key='problem_type', help="The problem type is the type of problem that you want to solve")
 
-        with col3:
+        if problem_type not in ("Classification", "Regression"):
+            return
 
-            if problem_type == "Classification":
-                model = st.selectbox("Model", ["Select", "Logistic Regression", "K-Nearest Neighbors", "Support Vector Machine", "Decision Tree", "Random Forest", "XGBoost", "LightGBM", "CatBoost"],
-                                     key='model', help="The model is the algorithm that you want to use to solve the problem")
-                new_line()
-
-            elif problem_type == "Regression":
-                model = st.selectbox("Model", ["Linear Regression", "K-Nearest Neighbors", "Support Vector Machine", "Decision Tree", "Random Forest", "XGBoost", "LightGBM", "CatBoost"],
-                                     key='model', help="The model is the algorithm that you want to use to solve the problem")
-                new_line()
+        # Search settings (separate keys per problem type, since their options differ)
+        col1, col2 = st.columns(2)
+        with col1:
+            metric_label = st.selectbox("Optimization Metric", list(AUTOML_METRICS[problem_type]), key=f'automl_metric_{problem_type}',
+                                        help="The score FLAML tries to improve while comparing models on validation data.")
+        with col2:
+            time_budget = st.slider("Time Budget (seconds)", min_value=10, max_value=300, value=60, step=10, key='automl_time_budget',
+                                    help="How long FLAML searches. More time lets it try more models and settings.")
+        options = list(AUTOML_MODELS[problem_type])
+        model_labels = st.multiselect("Models to Try", options, default=[m for m in DEFAULT_AUTOML_MODELS if m in options],
+                                      key=f'automl_models_{problem_type}', help="FLAML only tries the model types selected here.")
 
         # Preprocessing learned from the training set only and saved inside the model
-        if problem_type in ("Classification", "Regression") and model != "Select":
-            col1, col2 = st.columns(2)
-            with col1:
-                st.selectbox("Fill Missing Values (Optional)", ["None"] + list(IMPUTE_STRATEGIES), key='train_impute',
-                             help="Fills missing values using statistics from the training set only, so no test data leaks into training.")
-            with col2:
-                st.selectbox("Scale Features (Optional)", ["None"] + list(SCALERS), key='train_scale',
-                             help="Scales features using statistics from the training set only, so no test data leaks into training.")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.selectbox("Fill Missing Values (Optional)", ["None"] + list(IMPUTE_STRATEGIES), key='train_impute',
+                         help="Fills missing values using statistics from the training set only, so no test data leaks into training.")
+        with col2:
+            st.selectbox("Scale Features (Optional)", ["None"] + list(SCALERS), key='train_scale',
+                         help="Scales features using statistics from the training set only, so no test data leaks into training.")
 
         # Block training until the split data is clean, and tell the user why
-        training_problems = []
-        if problem_type in ("Classification", "Regression") and model != "Select":
-            n_dup = count_duplicate_rows()
-            if n_dup:
-                st.checkbox(f"Train with duplicate rows ({n_dup} rows are exact copies of another row)", value=False, key='allow_duplicates',
-                            help="Duplicate rows can be genuine (e.g. two records with the same details). Note: copies of the same row "
-                                 "may end up in both the train and test sets, which can make the test score look better than it really is.")
-            training_problems = find_training_problems()
-            if training_problems:
-                st.warning("**Training is disabled** until these issues are fixed:\n\n"
-                           + "\n".join(f"- {problem}" for problem in training_problems)
-                           + "\n\nAfter fixing them, please **split the data again**.")
+        n_dup = count_duplicate_rows()
+        if n_dup:
+            st.checkbox(f"Train with duplicate rows ({n_dup} rows are exact copies of another row)", value=False, key='allow_duplicates',
+                        help="Duplicate rows can be genuine (e.g. two records with the same details). Note: copies of the same row "
+                             "may end up in both the train and test sets, which can make the test score look better than it really is.")
+        training_problems = find_training_problems()
+        if training_problems:
+            st.warning("**Training is disabled** until these issues are fixed:\n\n"
+                       + "\n".join(f"- {problem}" for problem in training_problems)
+                       + "\n\nAfter fixing them, please **split the data again**.")
+        if not model_labels:
+            st.info("Please select at least one model type in **Models to Try**.")
 
         # A click on Train Model starts a new run. Read the click from session state before drawing the button,
         # so the button can be drawn disabled for the whole training (a disabled button itself returns False)
-        train_clicked = bool(st.session_state.get('train_model', False)) and not training_problems
-        train_disabled = bool(training_problems) or train_clicked
+        blocked = bool(training_problems) or not model_labels
+        train_clicked = bool(st.session_state.get('train_model', False)) and not blocked
+        col1, col2, col3 = st.columns([1, 0.7, 1])
+        col2.button("Train Model", disabled=blocked or train_clicked, key='train_model', use_container_width=True)
+        if train_clicked:
+            fit_and_store(X_train, y_train, problem_type, metric_label, model_labels, time_budget)
 
-
-        if target != "Select" and problem_type and model:
-            
-            if problem_type == "Classification":
-                 
-                if model == "Logistic Regression":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        penalty = st.selectbox("Penalty (Optional)", ["l2", "l1", None], key='penalty')
-
-                    with col2:
-                        # Only offer the solvers that support the chosen penalty
-                        solvers = {"l2": ["lbfgs", "newton-cg", "liblinear", "sag", "saga"],
-                                   "l1": ["liblinear", "saga"],
-                                   None: ["lbfgs", "newton-cg", "sag", "saga"]}[penalty]
-                        solver = st.selectbox("Solver (Optional)", solvers, key='solver')
-
-                    with col3:
-                        C = st.number_input("C (Optional)", min_value=1e-5, max_value=1.0, value=1.0, step=0.05, key='C')
-
-                    
-                    col1, col2, col3 = st.columns([1,1,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
-                    if train_clicked:
-                        
-                        
-                        progress_bar()
-
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Logistic Regression
-from sklearn.linear_model import LogisticRegression
-model = LogisticRegression(penalty='{penalty}', solver='{solver}', C={C}, random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.linear_model import LogisticRegression
-                        model = LogisticRegression(penalty=penalty, solver=solver, C=C, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "K-Nearest Neighbors":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_neighbors = st.number_input("N Neighbors **Required**", min_value=1, max_value=100, value=5, step=1, key='n_neighbors')
-
-                    with col2:
-                        weights = st.selectbox("Weights (Optional)", ["uniform", "distance"], key='weights')
-
-                    with col3:
-                        algorithm = st.selectbox("Algorithm (Optional)", ["auto", "ball_tree", "kd_tree", "brute"], key='algorithm')
-
-                    
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
-                    if train_clicked:
-                        progress_bar()
-
-
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> K-Nearest Neighbors
-from sklearn.neighbors import KNeighborsClassifier
-model = KNeighborsClassifier(n_neighbors={n_neighbors}, weights='{weights}', algorithm='{algorithm}')
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.neighbors import KNeighborsClassifier
-                        model = KNeighborsClassifier(n_neighbors=n_neighbors, weights=weights, algorithm=algorithm)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "Support Vector Machine":
-                        
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        kernel = st.selectbox("Kernel (Optional)", ["rbf", "poly", "linear", "sigmoid"], key='kernel')
-    
-                    with col2:
-                        degree = st.number_input("Degree (Optional)", min_value=1, max_value=100, value=3, step=1, key='degree')
-    
-                    with col3:
-                        C = st.number_input("C (Optional)", min_value=1e-5, max_value=1.0, value=1.0, step=0.05, key='C')
-    
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
-                    if train_clicked:
-
-                        progress_bar()
-    
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Support Vector Machine
-from sklearn.svm import SVC
-model = SVC(kernel='{kernel}', degree={degree}, C={C}, random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.svm import SVC
-                        model = SVC(kernel=kernel, degree=degree, C=C, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "Decision Tree":
-                            
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        criterion = st.selectbox("Criterion (Optional)", ["gini", "entropy", "log_loss"], key='criterion')
-        
-                    with col2:
-                        splitter = st.selectbox("Splitter (Optional)", ["best", "random"], key='splitter')
-        
-                    with col3:
-                        min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=100, value=2, step=1, key='min_samples_split')
-                            
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
-                    if train_clicked:
-                        progress_bar()
-        
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Decision Tree
-from sklearn.tree import DecisionTreeClassifier
-model = DecisionTreeClassifier(criterion='{criterion}', splitter='{splitter}', min_samples_split={min_samples_split}, random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.tree import DecisionTreeClassifier
-                        model = DecisionTreeClassifier(criterion=criterion, splitter=splitter, min_samples_split=min_samples_split, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "Random Forest":
-                                
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
-            
-                    with col2:
-                        criterion = st.selectbox("Criterion (Optional)", ["gini", "entropy", "log_loss"], key='criterion')
-            
-                    with col3:
-                        min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=100, value=2, step=1, key='min_samples_split')
-                                
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model', use_container_width=True)
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Random Forest
-from sklearn.ensemble import RandomForestClassifier
-model = RandomForestClassifier(n_estimators={n_estimators}, criterion='{criterion}', min_samples_split={min_samples_split}, random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.ensemble import RandomForestClassifier
-                        model = RandomForestClassifier(n_estimators=n_estimators, criterion=criterion, min_samples_split=min_samples_split, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "XGBoost":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
-            
-                    with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
-            
-                    with col3:
-                        booster = st.selectbox("Booster (Optional)", ["gbtree", "gblinear", "dart"], key='booster')
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> XGBoost
-from xgboost import XGBClassifier
-model = XGBClassifier(n_estimators={n_estimators}, learning_rate={learning_rate}, booster='{booster}', random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from xgboost import XGBClassifier
-                        model = XGBClassifier(n_estimators=n_estimators, learning_rate=learning_rate, booster=booster, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == 'LightGBM':
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
-            
-                    with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
-            
-                    with col3:
-                        boosting_type = st.selectbox("Boosting Type (Optional)", ["gbdt", "dart", "goss"], key='boosting_type')
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> LightGBM
-from lightgbm import LGBMClassifier
-model = LGBMClassifier(n_estimators={n_estimators}, learning_rate={learning_rate}, boosting_type='{boosting_type}', random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from lightgbm import LGBMClassifier
-                        model = LGBMClassifier(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == 'CatBoost':
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=5, key='n_estimators')
-            
-                    with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.05, key='learning_rate')
-            
-                    with col3:
-                        boosting_type = st.selectbox("Boosting Type (Optional)", ["Ordered", "Plain"], key='boosting_type')
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> CatBoost
-from catboost import CatBoostClassifier
-model = CatBoostClassifier(n_estimators={n_estimators}, learning_rate={learning_rate}, boosting_type='{boosting_type}', random_state=42)
-model.fit(X_train, y_train)
-\n """
-                        from catboost import CatBoostClassifier
-                        model = CatBoostClassifier(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type, random_state=42)
-                        fit_and_store(model, X_train, y_train)
-
-            if problem_type == "Regression":
-                 
-                if model == "Linear Regression":
-                
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        fit_intercept = st.selectbox("Fit Intercept (Optional)", [True, False], key='normalize')
-            
-                    with col2:
-                        positive = st.selectbox("Positve (Optional)", [True, False], key='positive')
-            
-                    with col3:
-                        copy_x = st.selectbox("Copy X (Optional)", [True, False], key='copy_x')
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Linear Regression
-from sklearn.linear_model import LinearRegression
-model = LinearRegression(fit_intercept={fit_intercept}, positive={positive}, copy_X={copy_x})
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.linear_model import LinearRegression
-                        model = LinearRegression(fit_intercept=fit_intercept, positive=positive, copy_X=copy_x)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "K-Nearest Neighbors":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_neighbors = st.number_input("N Neighbors (Optional)", min_value=1, max_value=100, value=5, step=1, key='n_neighbors')
-            
-                    with col2:
-                        weights = st.selectbox("Weights (Optional)", ["uniform", "distance"], key='weights')
-            
-                    with col3:
-                        algorithm = st.selectbox("Algorithm (Optional)", ["auto", "ball_tree", "kd_tree", "brute"], key='algorithm')
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> K-Nearest Neighbors
-from sklearn.neighbors import KNeighborsRegressor
-model = KNeighborsRegressor(n_neighbors={n_neighbors}, weights='{weights}', algorithm='{algorithm}')
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.neighbors import KNeighborsRegressor
-                        model = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights, algorithm=algorithm)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "Support Vector Machine":
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        kernel = st.selectbox("Kernel (Optional)", ["linear", "poly", "rbf", "sigmoid"], key='kernel')
-            
-                    with col2:
-                        degree = st.number_input("Degree (Optional)", min_value=1, max_value=10, value=3, step=1, key='degree')
-            
-                    with col3:
-                        gamma = st.selectbox("Gamma (Optional)", ["scale", "auto"], key='gamma')
-                        
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Support Vector Machine
-from sklearn.svm import SVR
-model = SVR(kernel='{kernel}', degree={degree}, gamma='{gamma}')
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.svm import SVR
-                        model = SVR(kernel=kernel, degree=degree, gamma=gamma)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "Decision Tree":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        criterion = st.selectbox("Criterion (Optional)", ["squared_error", "friedman_mse", "absolute_error", "poisson"], key='criterion')
-            
-                    with col2:
-                        splitter = st.selectbox("Splitter (Optional)", ["best", "random"], key='splitter')
-            
-                    with col3:
-                        min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=10, value=2, step=1, key='min_samples_split')
-
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Decision Tree
-from sklearn.tree import DecisionTreeRegressor
-model = DecisionTreeRegressor(criterion='{criterion}', splitter='{splitter}', min_samples_split={min_samples_split})
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.tree import DecisionTreeRegressor
-                        model = DecisionTreeRegressor(criterion=criterion, splitter=splitter, min_samples_split=min_samples_split)
-                        fit_and_store(model, X_train, y_train)
-                
-                if model == "Random Forest":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
-            
-                    with col2:
-                        criterion = st.selectbox("Criterion (Optional)", ["squared_error", "friedman_mse", "absolute_error", "poisson"], key='criterion')
-            
-                    with col3:
-                        min_samples_split = st.number_input("Min Samples Split (Optional)", min_value=2, max_value=10, value=2, step=1, key='min_samples_split')
-
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> Random Forest
-from sklearn.ensemble import RandomForestRegressor
-model = RandomForestRegressor(n_estimators={n_estimators}, criterion='{criterion}', min_samples_split={min_samples_split})
-model.fit(X_train, y_train)
-\n """
-                        from sklearn.ensemble import RandomForestRegressor
-                        model = RandomForestRegressor(n_estimators=n_estimators, criterion=criterion, min_samples_split=min_samples_split)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "XGBoost":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
-            
-                    with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
-            
-                    with col3:
-                        booster = st.selectbox("Booster (Optional)", ["gbtree", "gblinear", "dart"], key='booster')
-
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> XGBoost
-from xgboost import XGBRegressor
-model = XGBRegressor(n_estimators={n_estimators}, learning_rate={learning_rate}, booster='{booster}')
-model.fit(X_train, y_train)
-\n """
-                        from xgboost import XGBRegressor
-                        model = XGBRegressor(n_estimators=n_estimators, learning_rate=learning_rate, booster=booster)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "LightGBM":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
-            
-                    with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
-            
-                    with col3:
-                        boosting_type = st.selectbox("Boosting Type (Optional)", ["gbdt", "dart", "goss"], key='boosting_type')
-
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> LightGBM
-from lightgbm import LGBMRegressor
-model = LGBMRegressor(n_estimators={n_estimators}, learning_rate={learning_rate}, boosting_type='{boosting_type}')
-model.fit(X_train, y_train)
-\n """
-                        from lightgbm import LGBMRegressor
-                        model = LGBMRegressor(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type)
-                        fit_and_store(model, X_train, y_train)
-
-                if model == "CatBoost":
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        n_estimators = st.number_input("N Estimators (Optional)", min_value=1, max_value=1000, value=100, step=1, key='n_estimators')
-            
-                    with col2:
-                        learning_rate = st.number_input("Learning Rate (Optional)", min_value=0.01, max_value=1.0, value=0.1, step=0.1, key='learning_rate')
-            
-                    with col3:
-                        boosting_type = st.selectbox("Boosting Type (Optional)", ["Ordered", "Plain"], key='boosting_type')
-
-                    col1, col2, col3 = st.columns([1,0.7,1])
-                    col2.button("Train Model", disabled=train_disabled, key='train_model')
-                    if train_clicked:
-                        progress_bar()
-            
-                        # Train the model
-                        st.session_state.all_the_process += f"""
-# Model Building --> CatBoost
-from catboost import CatBoostRegressor
-model = CatBoostRegressor(n_estimators={n_estimators}, learning_rate={learning_rate}, boosting_type='{boosting_type}')
-model.fit(X_train, y_train)
-\n """
-                        from catboost import CatBoostRegressor
-                        model = CatBoostRegressor(n_estimators=n_estimators, learning_rate=learning_rate, boosting_type=boosting_type)
-                        fit_and_store(model, X_train, y_train)
-
-        # Shown after training reruns the page: the result, and the trained model's download
+        # Shown after training reruns the page: the result, the leaderboard, and the trained model's download
         message = st.session_state.pop('train_message', None)
         if message:
             kind, text = message
@@ -711,6 +331,12 @@ model.fit(X_train, y_train)
             else:
                 st.error(text, icon="⚠️")
         trained = st.session_state.get('trained_model')
+        board = st.session_state.get('automl_leaderboard')
+        if trained is not None and board is not None and not board.empty:
+            st.markdown("#### Leaderboard")
+            st.write("The best validation score of each model type FLAML tried (🏆 = the model used for evaluation).")
+            st.dataframe(board, use_container_width=True)
         if trained is not None:
             col1, col2, col3 = st.columns([1, 0.7, 1])
-            col2.download_button("Download Model", lambda: model_bytes(trained), "model.pkl", use_container_width=True, key='save_model')
+            col2.download_button("Download Model", lambda: model_bytes(trained), "model.pkl", use_container_width=True, key='save_model',
+                                 help="A FLAML model: loading it in Python requires the flaml package.")

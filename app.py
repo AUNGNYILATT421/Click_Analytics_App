@@ -405,14 +405,15 @@ print("F1 Score on Test Set: ", f1_score(y_test, y_pred_test, average='{average}
                                     st.session_state.all_the_process += f"""
 # Evaluation - AUC Score
 from sklearn.metrics import roc_auc_score
-print("AUC Score on Train Set: ", roc_auc_score(y_train, y_pred_train))
-print("AUC Score on Validation Set: ", roc_auc_score(y_val, y_pred_val))
-print("AUC Score on Test Set: ", roc_auc_score(y_test, y_pred_test))
+# AUC uses predicted probabilities (for more than two classes: multi_class="ovr")
+print("AUC Score on Train Set: ", roc_auc_score(y_train, model.predict_proba(X_train)[:, 1]))
+print("AUC Score on Validation Set: ", roc_auc_score(y_val, model.predict_proba(X_val)[:, 1]))
+print("AUC Score on Test Set: ", roc_auc_score(y_test, model.predict_proba(X_test)[:, 1]))
 \n """
                                     from sklearn.metrics import roc_auc_score
-                                    train_auc = roc_auc_score(y_train, y_pred_train)
-                                    val_auc = roc_auc_score(y_val, y_pred_val)
-                                    test_auc = roc_auc_score(y_test, y_pred_test)
+                                    train_auc = auc_score(model, X_train, y_train)
+                                    val_auc = auc_score(model, X_val, y_val)
+                                    test_auc = auc_score(model, X_test, y_test)
 
                                     metrics_df[metric] = [train_auc, val_auc, test_auc]
                                     st.session_state['metrics_df'] = metrics_df
@@ -421,12 +422,13 @@ print("AUC Score on Test Set: ", roc_auc_score(y_test, y_pred_test))
                                     st.session_state.all_the_process += f"""
 # Evaluation - AUC Score
 from sklearn.metrics import roc_auc_score
-print("AUC Score on Train Set: ", roc_auc_score(y_train, y_pred_train))
-print("AUC Score on Test Set: ", roc_auc_score(y_test, y_pred_test))
+# AUC uses predicted probabilities (for more than two classes: multi_class="ovr")
+print("AUC Score on Train Set: ", roc_auc_score(y_train, model.predict_proba(X_train)[:, 1]))
+print("AUC Score on Test Set: ", roc_auc_score(y_test, model.predict_proba(X_test)[:, 1]))
 \n """
                                     from sklearn.metrics import roc_auc_score
-                                    train_auc = roc_auc_score(y_train, y_pred_train)
-                                    test_auc = roc_auc_score(y_test, y_pred_test)
+                                    train_auc = auc_score(model, X_train, y_train)
+                                    test_auc = auc_score(model, X_test, y_test)
 
                                     metrics_df[metric] = [train_auc, test_auc]
                                     st.session_state['metrics_df'] = metrics_df
@@ -617,7 +619,12 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
                         st.markdown("### ROC Curve")
                         new_line()
                         
-                        if st.session_state["split_sets"] == "Train, Validation, and Test":
+                        # More than two classes: one curve per class on the test set
+                        if len(model.classes_) > 2:
+                            col1, col2, col3 = st.columns([0.2, 1, 0.2])
+                            col2.pyplot(plot_multiclass_roc(model, X_test, y_test))
+
+                        elif st.session_state["split_sets"] == "Train, Validation, and Test":
 
                             # Show the ROC curve plot without any columns
                             col1, col2, col3 = st.columns([0.2, 1, 0.2])
