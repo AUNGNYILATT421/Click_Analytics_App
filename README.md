@@ -4,8 +4,6 @@
 
 Upload a dataset, explore and clean it, prepare the features, and let automated machine learning find the best model — all in the browser, without writing code.
 
-🔗 **Live app:** [clickanalyticsapp-ezio.streamlit.app](https://clickanalyticsapp-ezio.streamlit.app)
-
 ---
 
 ## 🚀 Features
