@@ -2,7 +2,11 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import plotly.express as px
-from utils import new_line
+from utils import new_line, short_list
+
+# Recommend Ordinal Encoding when One Hot Encoding would create more new columns than this
+ONE_HOT_MAX_PER_FEATURE = 10
+ONE_HOT_MAX_TOTAL = 20
 
 def handle_categorical_data(st, df):
 
@@ -92,6 +96,22 @@ def handle_categorical_data(st, df):
             enc_feat = st.multiselect("Select Features", df.select_dtypes(include=[object]).columns.tolist(), key='encoding_feat', help="Select the categorical features to encode.")
         with col2:
             encoding = st.selectbox("Select Encoding", ["Select", "Ordinal Encoding", "One Hot Encoding", "Count Frequency Encoding"], key='encoding', help="Select the encoding method.")
+
+        # Recommendation: One Hot Encoding of features with many categories creates many columns
+        if enc_feat and encoding == "One Hot Encoding":
+            new_cols = {feat: max(df[feat].nunique() - 1, 0) for feat in enc_feat}   # first category is dropped
+            total = sum(new_cols.values())
+            if total > ONE_HOT_MAX_TOTAL or max(new_cols.values()) > ONE_HOT_MAX_PER_FEATURE:
+                if len(enc_feat) == 1:
+                    st.info(f"💡 **Recommendation:** One Hot Encoding will create **{total}** new columns for **`{enc_feat[0]}`**. "
+                            "For features with many categories, **Ordinal Encoding** is recommended instead: it keeps one column per "
+                            "feature and works well with the tree-based models FLAML mostly uses.")
+                else:
+                    # One overall recommendation for several features
+                    many = [feat for feat, n in sorted(new_cols.items(), key=lambda kv: -kv[1]) if n > ONE_HOT_MAX_PER_FEATURE] or enc_feat
+                    st.info(f"💡 **Recommendation:** for these **{len(enc_feat)}** features, **Ordinal Encoding** is recommended overall. "
+                            f"One Hot Encoding would create **{total}** new columns, mostly from {short_list(many)} (many categories). "
+                            "Ordinal Encoding keeps one column per feature and works well with the tree-based models FLAML mostly uses.")
 
         if enc_feat and encoding != "Select":
             new_line()

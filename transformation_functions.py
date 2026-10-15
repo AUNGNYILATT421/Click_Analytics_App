@@ -1,8 +1,39 @@
 import streamlit as st
 import numpy as np
-from utils import new_line
+from utils import new_line, short_list
 import time
 from progress_bar import progress_bar
+
+# Exponential Transformation is not recommended when values are larger than this in magnitude
+EXP_LARGE_VALUE = 10
+
+def unsuitable_for(values, trans):
+    # Whether a transformation is not recommended for these (non-missing) values
+    if trans == "Log Transformation":
+        return values.min() <= 0
+    if trans == "Square Root Transformation":
+        return values.min() < 0
+    if trans == "Exponential Transformation":
+        return values.abs().max() > EXP_LARGE_VALUE
+    return False
+
+def overall_transformation_recommendation(df, features, trans):
+    # If the chosen transformation doesn't suit every feature, recommend the strongest one that suits them all
+    columns = {f: df[f].dropna() for f in features if not df[f].dropna().empty}
+    unsuitable = [f for f, v in columns.items() if unsuitable_for(v, trans)]
+    if not unsuitable:
+        return None
+    reason = ("it has " if len(unsuitable) == 1 else "they have ") + {
+        "Log Transformation": "values ≤ 0",
+        "Square Root Transformation": "negative values",
+        "Exponential Transformation": "numerically large values (e^x explodes above about 709 and shrinks large negative values to almost 0)"}[trans]
+    message = f"**{trans}** isn't suitable for **{len(unsuitable)} of {len(columns)}** selected features ({short_list(unsuitable)}): {reason}. "
+    if trans == "Exponential Transformation":
+        # Exponential expands values; no other transformation does the same job, so only advise avoiding it
+        return message + "It is not recommended for these features."
+    smallest = min(v.min() for v in columns.values())
+    best = "Log Transformation" if smallest > 0 else "Square Root Transformation" if smallest >= 0 else "Cube Root Transformation"
+    return message + f"**{best}** is recommended overall, as it suits all the selected features."
 
 def display_transformation_options(st, df):
     # Data Transformation
@@ -55,6 +86,30 @@ def display_transformation_options(st, df):
             negative_cols = [col for col in trans_feat if (df[col] < 0).any()]
             if negative_cols:
                 st.warning(f"The Features **`{negative_cols}`** have negative values, and the log isn't defined for negative numbers. Please choose another transformation, such as **Cube Root Transformation**, or select other features.")
+
+        # Recommendations: transformations to avoid for these values (advice only; negative values for Log are blocked above)
+        advice = []
+        if len(trans_feat) > 1 and trans != "Select":
+            # One overall recommendation for several features
+            overall = overall_transformation_recommendation(df, trans_feat, trans)
+            if overall:
+                st.info(f"💡 **Recommendation:** {overall}")
+        for col in (trans_feat if len(trans_feat) == 1 else []):
+            values = df[col].dropna()
+            if values.empty:
+                continue
+            if trans == "Log Transformation" and col not in negative_cols and values.min() <= 0:
+                advice.append(f"**`{col}`** has values ≤ 0 (smallest: {values.min():g}). Log Transformation is best for positive values; "
+                              "consider **Cube Root Transformation**.")
+            elif trans == "Square Root Transformation" and values.min() < 0:
+                advice.append(f"**`{col}`** has negative values (smallest: {values.min():g}). Square Root Transformation is meant for "
+                              "values ≥ 0; consider **Cube Root Transformation**, which handles negative values naturally.")
+            elif trans == "Exponential Transformation" and values.abs().max() > EXP_LARGE_VALUE:
+                advice.append(f"**`{col}`** has numerically large values (largest magnitude: {values.abs().max():g}). e^x makes large "
+                              "positive values explode (above about 709 they become infinite) and large negative values shrink to "
+                              "almost 0, so Exponential Transformation is not recommended here.")
+        if advice:
+            st.info("💡 **Recommendation:**\n\n" + "\n".join(f"- {a}" for a in advice))
 
         # Apply Transformation
         if trans_feat and trans != "Select":
