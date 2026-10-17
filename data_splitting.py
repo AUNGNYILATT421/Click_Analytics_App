@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from utils import new_line
+from recipe import record_step
 
 def display_splitting_options(df):
     st.markdown("### 🪚 Data Splitting", unsafe_allow_html=True)
@@ -33,6 +34,7 @@ def remove_target_leaks(df, target):
 df.drop(columns={leaks}, inplace=True)
 \n """
         df.drop(columns=leaks, inplace=True)
+        record_step({"op": "drop_columns", "columns": list(leaks), "label": f"Removed {list(leaks)} (100% correlated with the target)"})
         st.session_state['df'] = df
     return leaks
 

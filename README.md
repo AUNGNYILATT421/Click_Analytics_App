@@ -38,6 +38,7 @@ Upload a dataset, explore and clean it, prepare the features, and let automated 
 - **Scaling:** standard, MinMax, robust
 - **Transformations:** log, square root, cube root, exponential
 - **Feature engineering:** create features from two columns (+, −, ×, ÷), transform a feature by a constant, select features
+- **Recommendations** based on the selected columns' values (for one column, or one overall method for several): Ordinal instead of One Hot Encoding when it would create many columns, which scaling method suits the data, and which transformations to avoid (e.g. log for values ≤ 0)
 
 ### ✂️ Data Splitting
 
@@ -59,6 +60,13 @@ Upload a dataset, explore and clean it, prepare the features, and let automated 
 - **Regression:** MAE, MSE, RMSE, R²
 - **Permutation feature importance** chart
 - Download the trained model (`.pkl`) and the processed dataset (`.csv`)
+
+### 🔮 Prediction
+
+- Predict the target for **one new row**: enter a value for each original column the model needs (numbers, or a dropdown of the known categories)
+- The row is prepared with **exactly the same steps as the training data**, using the values learned from it (e.g. the same fill values, category mappings, and scaling) — nothing is re-learned from the new row
+- Shows the prediction (with class probabilities for classification) and the list of steps applied
+- Prediction is disabled, with an explanation, when a field is empty, when a category was never seen in training, or when a feature is built from the target itself
 
 ---
 
@@ -92,7 +100,7 @@ streamlit run app.py
 
 ## 🧪 Using a Downloaded Model
 
-The downloaded `model.pkl` is a FLAML model (wrapped in a scikit-learn `Pipeline` if missing-value filling or scaling was used). Load it in Python with the same package versions as in `requirements.txt`:
+To predict new rows, the **Prediction** section in the app is the easiest way: it prepares each row automatically. The downloaded `model.pkl` is a FLAML model (wrapped in a scikit-learn `Pipeline` if missing-value filling or scaling was used). Load it in Python with the same package versions as in `requirements.txt`:
 
 ```python
 import joblib

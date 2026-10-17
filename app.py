@@ -23,6 +23,8 @@ from model_building import *
 import eda_module
 from missing_values_handler import handle_missing_values
 from CTGD import handle_categorical_data
+from recipe import build_input_schema
+from prediction import show_prediction
 
 # Set configuration and initialize state
 set_page_config()
@@ -93,6 +95,11 @@ if st.session_state.df is None:
     
 # Dataframe
 if st.session_state.df is not None:
+
+    # Remember the columns as loaded, before any changes (for the prediction form), and start recording the steps
+    if st.session_state.get('input_schema') is None:
+        st.session_state['input_schema'] = build_input_schema(st.session_state.df)
+        st.session_state['recipe'] = []
 
     # Re-initialize the variables from the state
     df = st.session_state.df
@@ -670,6 +677,10 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
             show_permutation_importance(model, st.session_state.X_test, st.session_state.y_test)
 
                      
+    # Prediction on one new row, once a model is trained
+    if st.session_state['trained_model_bool']:
+        show_prediction()
+
     st.divider()          
     col1, col2, col3= st.columns(3, gap='small')        
 

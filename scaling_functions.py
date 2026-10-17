@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 from utils import new_line, short_list
 from progress_bar import progress_bar
+from recipe import record_step
 
 def recommend_scaling(s):
     # Rule of thumb from the column's values: (recommended scaling, reason)
@@ -145,6 +146,7 @@ df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=
                         from sklearn.preprocessing import StandardScaler
                         scaler = StandardScaler()
                         df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns, index=df.index)
+                        record_step({"op": "scale", "columns": list(scale_feat), "scaler": scaler, "label": f"{scaling} of {list(scale_feat)}"})
                         st.session_state['df'] = df
                         st.success(f"The Features **`{scale_feat}`** have been scaled using Standard Scaling.")
     
@@ -159,6 +161,7 @@ df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=
                         from sklearn.preprocessing import MinMaxScaler
                         scaler = MinMaxScaler()
                         df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns, index=df.index)
+                        record_step({"op": "scale", "columns": list(scale_feat), "scaler": scaler, "label": f"{scaling} of {list(scale_feat)}"})
                         st.session_state['df'] = df
                         st.success(f"The Features **`{scale_feat}`** have been scaled using MinMax Scaling.")
     
@@ -173,6 +176,7 @@ df[{scale_feat}] = pd.DataFrame(scaler.fit_transform(df[{scale_feat}]), columns=
                         from sklearn.preprocessing import RobustScaler
                         scaler = RobustScaler()
                         df[scale_feat] = pd.DataFrame(scaler.fit_transform(df[scale_feat]), columns=df[scale_feat].columns, index=df.index)
+                        record_step({"op": "scale", "columns": list(scale_feat), "scaler": scaler, "label": f"{scaling} of {list(scale_feat)}"})
                         st.session_state['df'] = df
                         st.success(f"The Features **`{scale_feat}`** have been scaled using Robust Scaling.")
 

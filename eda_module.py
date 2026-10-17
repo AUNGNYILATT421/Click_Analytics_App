@@ -8,6 +8,7 @@ import plotly.express as px
 from wordcloud import WordCloud
 from utils import new_line
 from progress_bar import progress_bar
+from recipe import record_step
 from missing_values_handler import format_row_ranges
 
 def count_values(n, singular, plural):
@@ -207,6 +208,7 @@ df.drop(columns={col_to_delete}, inplace=True)
 \n """
                 progress_bar()
                 df.drop(columns=col_to_delete, inplace=True)
+                record_step({"op": "drop_columns", "columns": list(col_to_delete), "label": f"Deleted columns {list(col_to_delete)}"})
                 st.session_state.df = df
                 st.success(f"The Columns **`{col_to_delete}`** are Deleted Successfully!")
 
@@ -236,6 +238,7 @@ df.reset_index(drop=True, inplace=True)
                     progress_bar()
                     df.drop(index=rows, inplace=True)
                     df.reset_index(drop=True, inplace=True)
+                    record_step({"op": "rows", "label": f"Deleted {len(rows)} rows (training data only)"})
                     st.session_state.df = df
                     st.success(f"**{len(rows)}** rows have been deleted. The remaining **{len(df)}** rows have been renumbered from 0.")
 
@@ -278,6 +281,7 @@ df.reset_index(drop=True, inplace=True)
                     progress_bar()
                     df.drop_duplicates(inplace=True)
                     df.reset_index(drop=True, inplace=True)
+                    record_step({"op": "rows", "label": f"Removed {n_dup} duplicate rows (training data only)"})
                     st.session_state.df = df
                     st.success(f"**{n_dup}** duplicate rows have been removed.")
 
@@ -315,6 +319,7 @@ df.reset_index(drop=True, inplace=True)
                     progress_bar()
                     for col, result in converted.items():
                         df[col] = result
+                    record_step({"op": "convert", "columns": list(converted), "to": new_type, "label": f"Converted {list(converted)} to {new_type}"})
                     st.session_state.df = df
                     st.success(f"The Columns **`{cols_to_convert}`** have been converted to **{new_type}**.")
 

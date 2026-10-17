@@ -3,6 +3,7 @@ import numpy as np
 import streamlit as st
 import plotly.express as px
 from utils import new_line, short_list
+from recipe import record_step
 
 # Recommend Ordinal Encoding when One Hot Encoding would create more new columns than this
 ONE_HOT_MAX_PER_FEATURE = 10
@@ -138,18 +139,30 @@ def apply_encoding(df, features, method, st):
         from sklearn.preprocessing import OrdinalEncoder
         encoder = OrdinalEncoder()
         df[features] = encoder.fit_transform(df[features])
+        record_step({"op": "ordinal", "label": f"Ordinal encoded {list(features)}",
+                     "mappings": {f: {c: i for i, c in enumerate(cats) if not pd.isna(c)} for f, cats in zip(features, encoder.categories_)}})
         st.success(f"The Categories of the features **`{features}`** have been encoded using Ordinal Encoding.")
         
     elif method == "One Hot Encoding":
         # Build the encoded DataFrame in one step: adding many dummy columns one by one fragments it
         # (pandas PerformanceWarning). Then rerun so every section of the page uses the new DataFrame
         dummies = pd.get_dummies(df[features], columns=features, drop_first=True)
+        # Record each feature's categories and which dummy column stands for which category (the first one is dropped)
+        one_hot = {}
+        for f in features:
+            categories = {str(c) for c in df[f].dropna().unique()}
+            one_hot[f] = (categories, [(d, d[len(f) + 1:]) for d in dummies.columns
+                                       if d.startswith(f"{f}_") and d[len(f) + 1:] in categories])
+        record_step({"op": "one_hot", "columns": one_hot, "label": f"One Hot encoded {list(features)}"})
         st.session_state['df'] = pd.concat([df.drop(columns=features), dummies], axis=1)
         st.session_state['encoding_message'] = f"The Categories of the features **`{features}`** have been encoded using One Hot Encoding."
         st.rerun()
 
     elif method == "Count Frequency Encoding":
+        mappings = {}
         for feature in features:
             freq = df[feature].value_counts() / len(df)
             df[feature] = df[feature].map(freq)
+            mappings[feature] = freq.to_dict()
+        record_step({"op": "count_frequency", "mappings": mappings, "label": f"Count Frequency encoded {list(features)}"})
         st.success(f"The Categories of the features **`{features}`** have been encoded using Count Frequency Encoding.")

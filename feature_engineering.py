@@ -10,6 +10,7 @@ import time
 from PIL import Image
 # from wordcloud import WordCloud
 from utils import new_line
+from recipe import record_step
 from config import set_page_config
 from session_state import initial_state
 
@@ -42,6 +43,7 @@ def extract_feature(df):
                 df[feat_name] = df[feat1] * df[feat2]
             elif op == "Division /":
                 df[feat_name] = df[feat1] / df[feat2]
+            record_step({"op": "extract", "name": feat_name, "a": feat1, "b": feat2, "sign": op[-1], "label": f"Created feature {feat_name}"})
             
             st.session_state['df'] = df
             st.success(f"Feature '**_{feat_name}_**' has been extracted using {op}.")
@@ -70,6 +72,8 @@ def transform_feature(df):
                 df[feat_trans] = df[feat_trans] * float(value)
             elif op == "Division /":
                 df[feat_trans] = df[feat_trans] / float(value)
+            record_step({"op": "constant", "columns": list(feat_trans), "sign": op[-1], "value": float(value),
+                         "label": f"{op[:-2]} {value} applied to {list(feat_trans)}"})
             
             st.session_state['df'] = df
             st.success(f"The Features **`{feat_trans}`** have been transformed using {op} with the value **`{value}`**.")
@@ -85,6 +89,7 @@ def select_feature(df):
         col1, col2, col3 = st.columns([1, 0.7, 1])
         if col2.button("Select Features"):
             df = df[feat_sel]
+            record_step({"op": "select_columns", "columns": list(feat_sel), "label": f"Kept only the features {list(feat_sel)}"})
             st.session_state['df'] = df
             st.success(f"The Features **`{feat_sel}`** have been selected.")
     

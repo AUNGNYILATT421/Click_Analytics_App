@@ -3,6 +3,7 @@ import numpy as np
 from utils import new_line, short_list
 import time
 from progress_bar import progress_bar
+from recipe import record_step
 
 # Exponential Transformation is not recommended when values are larger than this in magnitude
 EXP_LARGE_VALUE = 10
@@ -137,6 +138,7 @@ def display_transformation_options(st, df):
                     df[trans_feat] = np.exp(df[trans_feat])
                     st.session_state['df'] = df
                     st.success("Numerical features have been transformed using Exponential Transformation.")
+                record_step({"op": "transform", "method": trans, "columns": list(trans_feat), "label": f"{trans} of {list(trans_feat)}"})
 
         # Show DataFrame Button
         new_line()

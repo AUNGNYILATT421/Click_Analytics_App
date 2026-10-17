@@ -5,6 +5,7 @@ import plotly.express as px
 from sklearn.impute import SimpleImputer
 from utils import new_line
 from progress_bar import progress_bar
+from recipe import record_step
 
 def fill_mean_median(df, features, stat):
     # Fill numeric features with the mean/median and non-numeric ones with the mode, in place
@@ -12,12 +13,17 @@ def fill_mean_median(df, features, stat):
     num_cols = [c for c in features if pd.api.types.is_numeric_dtype(df[c])]
     cat_cols = [c for c in features if c not in num_cols]
 
+    values = {}   # the fill value used for each column (recorded so new data is filled the same way)
     if num_cols:
-        df[num_cols] = df[num_cols].fillna(df[num_cols].agg(stat))
+        stats = df[num_cols].agg(stat)
+        df[num_cols] = df[num_cols].fillna(stats)
+        values.update({col: stats[col] for col in num_cols})
     for col in cat_cols:
         mode = df[col].mode()
         if not mode.empty:
             df[col] = df[col].fillna(mode.iloc[0])
+            values[col] = mode.iloc[0]
+    record_step({"op": "fill", "values": values, "label": f"Filled missing values with the {stat} (text columns: mode) in {list(values)}"})
 
     return num_cols, cat_cols
 
@@ -72,6 +78,7 @@ for col in {blank_cols}:
                             mask = blank_mask(df[col])
                             converted += int(mask.sum())
                             df.loc[mask, col] = np.nan
+                        record_step({"op": "blank_to_missing", "columns": list(blank_cols), "label": f"Treated blank text as missing in {list(blank_cols)}"})
                         st.session_state['df'] = df
                         st.success(f"**{converted}** blank text values in **`{blank_cols}`** are now missing values.")
 
@@ -179,6 +186,7 @@ df.reset_index(drop=True, inplace=True)
                     n_before = len(df)
                     df.dropna(subset=fill_feat, inplace=True)
                     df.reset_index(drop=True, inplace=True)
+                    record_step({"op": "rows", "label": f"Dropped rows with missing values in {list(fill_feat)} (training data only)"})
                     st.session_state['df'] = df
                     st.success(f"**{n_before - len(df)}** rows with missing values in **`{fill_feat}`** have been dropped. **{len(df)}** rows remain.")
 
@@ -191,6 +199,7 @@ df.reset_index(drop=True, inplace=True)
 df.drop(columns={drop_cols}, inplace=True)
 \n """
                     df.drop(columns=drop_cols, inplace=True)
+                    record_step({"op": "drop_columns", "columns": list(drop_cols), "label": f"Dropped columns with missing values {list(drop_cols)}"})
                     st.session_state['df'] = df
                     st.success(f"The Columns **`{drop_cols}`** have been dropped from the DataFrame.")
                     kept = [c for c in fill_feat if c not in drop_cols]
@@ -228,6 +237,7 @@ df[{fill_feat}] = imputer.fit_transform(df[{fill_feat}])
                     from sklearn.impute import SimpleImputer
                     imputer = SimpleImputer(strategy='most_frequent')
                     df[fill_feat] = imputer.fit_transform(df[fill_feat])
+                    record_step({"op": "fill", "values": dict(zip(fill_feat, imputer.statistics_)), "label": f"Filled missing values with the mode in {list(fill_feat)}"})
 
                     st.session_state['df'] = df
                     st.success(f"The Columns **`{fill_feat}`** has been filled with the Mode.")
@@ -240,6 +250,7 @@ df[{fill_feat}] = imputer.fit_transform(df[{fill_feat}])
 df[{fill_feat}] = df[{fill_feat}].ffill().bfill()
 \n """
                     df[fill_feat] = df[fill_feat].ffill().bfill()
+                    record_step({"op": "ffill_bfill", "label": f"Forward/backward filled {list(fill_feat)} (training data only)"})
                     st.session_state['df'] = df
                     st.success(f"The Columns **`{fill_feat}`** have been filled with ffill, bfill.")
         
