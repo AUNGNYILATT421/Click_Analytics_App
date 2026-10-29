@@ -217,10 +217,10 @@ def predict_file(model, needed, schema, recipe, model_columns, target, from_targ
         result = saved["result"]
         failed = int(result["Problem"].notna().sum())
         if failed == 0:
-            st.success(f"Predicted all {len(result):,} rows.")
+            st.success(f"Predicted all {len(result):,} rows." if len(result) != 1 else "Predicted the row.")
         else:
             st.warning(f"Predicted {len(result) - failed:,} of {len(result):,} rows. "
-                       f"{failed:,} rows can't be predicted; the **Problem** column says why.")
+                       f"{failed:,} {'row' if failed == 1 else 'rows'} can't be predicted; the **Problem** column says why.")
         st.dataframe(result.head(100), use_container_width=True)
         if len(result) > 100:
             st.caption(f"Showing the first 100 of {len(result):,} rows. Download the file to see all of them.")
