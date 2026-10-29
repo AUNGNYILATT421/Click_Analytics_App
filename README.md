@@ -18,6 +18,7 @@ Upload a dataset, explore and clean it, prepare the features, and let automated 
 - Upload **CSV, XLSX, or XLS** files, or load them from a **URL**
 - **Google Drive** share links are supported (the file must be shared as "Anyone with the link")
 - Try the app with built-in **sample datasets** (Breast Cancer, Wine, Diabetes), which need no download
+- **💾 Save Project** (bottom of the page) saves the data and the recorded steps as a `.zip`; open it later with **Upload File** to continue where you left off. The file holds only data (Parquet + JSON), so opening a project can't run code; the trained model isn't included — split and train again
 
 ### 🩺 Data Check
 
@@ -65,6 +66,7 @@ Upload a dataset, explore and clean it, prepare the features, and let automated 
 - A **leaderboard** shows the best validation score of each model type
 - **Imbalanced classes** (a class under 20% of the training rows) are flagged, with a suggestion to optimise F1 or ROC AUC and an optional **Balance classes** setting (balanced sample weights; no rows are added or removed)
 - Optional missing-value filling and scaling, learned from the training set only (no test data leaks into training)
+- Optional **cross-validation**: the best model FLAML found is retrained on 5 parts of the training set (3 for more than 50,000 rows) and scored on the part left out each time, showing how stable the score is. No new search is run and the test set isn't used
 - Checks before training explain in plain language what must be fixed first: text columns, missing values, duplicate rows (users may choose to keep them), or duplicate column names
 
 ### 📈 Model Evaluation
@@ -80,6 +82,8 @@ Upload a dataset, explore and clean it, prepare the features, and let automated 
 - The row is prepared with **exactly the same steps as the training data**, using the values learned from it (e.g. the same fill values, category mappings, and scaling) — nothing is re-learned from the new row
 - Shows the prediction (with class probabilities for classification) and the list of steps applied
 - Prediction is disabled, with an explanation, when a field is empty, when a category was never seen in training, or when a feature is built from the target itself
+- **Why this prediction?** A chart shows how much each input raised or lowered the prediction (or the probability of the predicted class), compared with a typical training value
+- Columns stored as text but converted to numbers before training (e.g. a `TotalCharges` column with blank values) are entered as numbers, and columns that had no negative values don't accept negative numbers
 - Predict **many rows from a file** (CSV or Excel, up to 100,000 rows): every row is prepared the same way, and the downloadable result has Prediction (and probability) columns first. Rows that can't be predicted are not dropped: a **Problem** column says why (e.g. an empty field, text in a number column, or a category never seen in training)
 
 ---
@@ -109,6 +113,19 @@ source my_env/bin/activate        # Windows: my_env\Scripts\activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+---
+
+## ✅ Tests
+
+The tests drive the app the way a user would (Streamlit's `AppTest`) on synthetic and scikit-learn data. They run on GitHub on every push (`.github/workflows/tests.yml`), and locally:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
+
+They cover the preparation of new rows (identical to the training data), file prediction and the downloaded model, "Why this prediction?", undo, the data check and warnings, cross-validation, and saving and opening projects. They take about 1–2 minutes.
 
 ---
 

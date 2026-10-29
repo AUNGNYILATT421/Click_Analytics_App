@@ -28,6 +28,7 @@ from prediction import show_prediction
 from undo import checkpoint, show_steps_panel
 from data_check import show_data_check
 from guide import show_guide
+from project_file import project_bytes, load_project, ProjectError
 
 # Set configuration and initialize state
 set_page_config()
@@ -79,13 +80,25 @@ if st.session_state.df is None:
 
     # Upload
     if uploading_way == "upload":
-        uploaded_file = st.file_uploader("Upload the Dataset", type=["csv", "xlsx", "xls"])
+        uploaded_file = st.file_uploader("Upload the Dataset", type=["csv", "xlsx", "xls", "zip"],
+                                         help="A CSV or Excel file, or a project saved with 💾 Save Project (.zip).")
         if uploaded_file:
-            try:
-                df = load_data(uploaded_file)
-                st.session_state.df = df
-            except Exception as e:
-                st.error(f"Error loading the file: {e}")
+            if uploaded_file.name.lower().endswith(".zip"):
+                # A saved project: the data plus the recorded steps (split and train again after opening)
+                try:
+                    df, schema, recipe = load_project(uploaded_file)
+                    st.session_state['input_schema'], st.session_state['recipe'] = schema, recipe
+                    st.session_state.df = df
+                    st.session_state['project_message'] = (f"Project opened: {len(df):,} rows × {df.shape[1]:,} columns and "
+                                                           f"{len(recipe)} recorded steps. Split the data and train a model to continue.")
+                except ProjectError as e:
+                    st.error(f"This project can't be opened: {e}.")
+            else:
+                try:
+                    df = load_data(uploaded_file)
+                    st.session_state.df = df
+                except Exception as e:
+                    st.error(f"Error loading the file: {e}")
 
     # Sample data: small datasets bundled with scikit-learn (no download needed)
     elif uploading_way == "sample":
@@ -140,6 +153,9 @@ if st.session_state.df is not None:
 
     st.divider()
     new_line()
+    message = st.session_state.pop('project_message', None)
+    if message:
+        st.success(message)
 
     # Common data problems, in plain language
     show_data_check(df)
@@ -708,8 +724,8 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
     if st.session_state['trained_model_bool']:
         show_prediction()
 
-    st.divider()          
-    col1, col2, col3= st.columns(3, gap='small')        
+    st.divider()
+    col1, col2, col4, col3 = st.columns(4, gap='small')
 
     if col1.button("🎬 Show df", use_container_width=True):
         new_line()
@@ -723,6 +739,13 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
     df_for_download = st.session_state.df
     if col2.download_button("📌 Download df", lambda: df_for_download.to_csv(index=False).encode('utf-8'), "df.csv", key='save_df', use_container_width=True):
         st.success("Downloaded Successfully!")
+
+    # Save the data and the recorded steps to continue later (built only when clicked)
+    # The file is built when clicked, outside the page run where session state isn't available: pass the values now
+    project = (st.session_state.df, st.session_state['input_schema'], list(st.session_state['recipe']))
+    col4.download_button("💾 Save Project", lambda: project_bytes(*project),
+                         "click_analytics_project.zip", key='save_project', use_container_width=True,
+                         help="Saves the data and the recorded steps. Open it later with Upload File. The trained model isn't saved: split and train again.")
 
 
     if col3.button("⛔ Reset", use_container_width=True):

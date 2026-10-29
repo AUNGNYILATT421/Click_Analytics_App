@@ -149,6 +149,7 @@ def show_prediction():
                 if changed:
                     st.info(f"Note: **`{target}`** itself was changed before training ({'; '.join(changed)}), "
                             "so the prediction is on that changed scale, not in the original units.")
+                show_explanation(model, prepared, X_train, recipe, schema, needed, prediction)
 
         with file_tab:
             predict_file(model, needed, schema, recipe, model_columns, target, from_target)
@@ -230,3 +231,81 @@ def predict_file(model, needed, schema, recipe, model_columns, target, from_targ
         col1, col2, col3 = st.columns([1, 0.7, 1])
         col2.download_button("Download Predictions", lambda: result.to_csv(index=False).encode('utf-8'), "predictions.csv",
                              use_container_width=True, key="predict_file_download")
+
+
+def typical_values(X_train):
+    # A typical training value per model feature: the most common value for yes/no and category codes, else the median
+    typical = {}
+    for c in X_train.columns:
+        s = X_train[c]
+        few_whole_numbers = pd.api.types.is_numeric_dtype(s) and s.nunique() <= 20 and bool((s.dropna() % 1 == 0).all())
+        if pd.api.types.is_bool_dtype(s) or not pd.api.types.is_numeric_dtype(s) or few_whole_numbers:
+            typical[c] = s.mode().iloc[0]
+        else:
+            typical[c] = s.median()
+    return typical
+
+
+def explain_row(model, prepared, X_train, recipe, schema, needed, problem_type, prediction):
+    # For each input the user entered: how much the prediction changes when that input (and every feature built from it)
+    # is replaced by a typical training value. One small batch prediction: one row per input.
+    sources = feature_sources(recipe, list(schema))
+    typical = typical_values(X_train)
+    names, rows = [], []
+    for col in needed:
+        features = [f for f in prepared.columns if col in sources.get(str(f), set())]
+        if not features:
+            continue
+        row = prepared.copy()
+        for f in features:
+            row[f] = pd.Series([typical[f]], index=row.index).astype(prepared[f].dtype)
+        names.append(str(col)); rows.append(row)
+    if not rows:
+        return None
+    alternatives = pd.concat(rows, ignore_index=True)
+    if problem_type == "Classification":
+        k = list(model.classes_).index(prediction)
+        base = model.predict_proba(prepared)[0, k]
+        values = model.predict_proba(alternatives)[:, k]
+    else:
+        base = float(model.predict(prepared)[0])
+        values = model.predict(alternatives).astype(float)
+    return pd.DataFrame({"input": names, "effect": base - values}).sort_values("effect", key=abs, ascending=False)
+
+
+def show_explanation(model, prepared, X_train, recipe, schema, needed, prediction):
+    import matplotlib.pyplot as plt
+    problem_type = st.session_state.get('problem_type')
+    effects = explain_row(model, prepared, X_train, recipe, schema, needed, problem_type, prediction)
+    if effects is None:
+        return
+    st.markdown("#### Why this prediction?")
+    if problem_type == "Classification":
+        st.write(f"How much each input raised or lowered the probability of **{prediction}**, compared with a typical value "
+                 "from the training data (the median, or the most common value). Bars in percentage points.")
+        effects["effect"] *= 100
+        unit = "percentage points"
+    else:
+        st.write("How much each input raised or lowered the prediction, compared with a typical value from the training data "
+                 "(the median, or the most common value).")
+        unit = "change in prediction"
+    top = effects.head(10).iloc[::-1]     # largest effect at the top
+    # Blue raised it, red lowered it (a diverging pair checked for colour-blind readers); the sign is also on each label
+    colors = ["#2a78d6" if v >= 0 else "#e34948" for v in top["effect"]]
+    fig, ax = plt.subplots(figsize=(7, max(2.2, 0.38 * len(top) + 1)))
+    ax.barh(top["input"], top["effect"], color=colors, height=0.55)
+    ax.axvline(0, color="#52524e", linewidth=0.8)
+    span = max(float(top["effect"].abs().max()), 1e-9)
+    for y, v in enumerate(top["effect"]):
+        ax.text(v + (0.02 * span if v >= 0 else -0.02 * span), y, f"{v:+.1f}" if problem_type == "Classification" else f"{v:+,.3g}",
+                va="center", ha="left" if v >= 0 else "right", fontsize=9, color="#2b2b29")
+    ax.set_xlim(-span * 1.25 if (top["effect"] < 0).any() else -span * 0.05, span * 1.25 if (top["effect"] > 0).any() else span * 0.05)
+    ax.set_xlabel(unit, color="#52524e")
+    ax.tick_params(colors="#52524e"); ax.grid(axis="x", color="#e5e4e0", linewidth=0.6); ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+    st.caption("Blue: raised it · Red: lowered it" + (f" · showing the 10 largest of {len(effects)} inputs" if len(effects) > 10 else "")
+               + ". Each input is changed on its own, so the effects don't add up exactly to the prediction.")

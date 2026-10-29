@@ -10,6 +10,7 @@ from PIL import Image
 from wordcloud import WordCloud
 from utils import new_line, short_list
 from data_check import class_balance
+from cross_validation import show_cross_validation
 from config import set_page_config
 from session_state import initial_state
 from data_loading import load_data
@@ -111,18 +112,21 @@ def find_training_problems():
 
     return problems
 
-def model_bytes(model):
-    # Serialize the model together with everything needed to prepare raw new data (in memory, not to a shared file on disk).
-    # Use it outside the app with predict_with_bundle.py.
-    from importlib.metadata import version
+def model_bundle(model):
+    # The model together with everything needed to prepare raw new data. Collected while the page runs: the download
+    # file itself is built later, when the button is clicked, and session state isn't available then
     from recipe import required_inputs
     ss = st.session_state
-    schema, recipe, model_columns = ss.get('input_schema') or {}, ss.get('recipe', []), list(ss['X_train'].columns)
+    schema, recipe, model_columns = ss.get('input_schema') or {}, list(ss.get('recipe', [])), list(ss['X_train'].columns)
     target = ss.get('target_variable')
-    bundle = {"format": "click-analytics-model", "version": 1, "model": model, "problem_type": ss.get('problem_type'),
-              "target": target, "model_columns": model_columns, "input_schema": schema, "recipe": recipe,
-              "needed_inputs": [c for c in required_inputs(recipe, list(schema), [str(c) for c in model_columns]) if c != target],
-              "packages": {p: version(p) for p in ("flaml", "scikit-learn", "pandas", "numpy", "lightgbm", "xgboost", "catboost")}}
+    return {"format": "click-analytics-model", "version": 1, "model": model, "problem_type": ss.get('problem_type'),
+            "target": target, "model_columns": model_columns, "input_schema": schema, "recipe": recipe,
+            "needed_inputs": [c for c in required_inputs(recipe, list(schema), [str(c) for c in model_columns]) if c != target]}
+
+def model_bytes(bundle):
+    # Serialize the bundle in memory (not to a shared file on disk). Use it outside the app with predict_with_bundle.py
+    from importlib.metadata import version
+    bundle = dict(bundle, packages={p: version(p) for p in ("flaml", "scikit-learn", "pandas", "numpy", "lightgbm", "xgboost", "catboost")})
     buffer = io.BytesIO()
     joblib.dump(bundle, buffer)
     return buffer.getvalue()
@@ -213,6 +217,8 @@ sample_weight = compute_sample_weight("balanced", y_train)   # passed to model.f
 
     st.session_state['trained_model'] = model
     st.session_state['trained_model_bool'] = True
+    # What the model was optimised for (used by cross-validation)
+    st.session_state['trained_settings'] = (metric_label, metric, problem_type, "sample_weight" in settings)
     st.session_state['automl_leaderboard'] = automl_leaderboard(automl, metric, metric_label, problem_type)
 
     # Forget cached predictions and metrics so the new model is evaluated from scratch
@@ -372,5 +378,7 @@ def display_model_building_options(X_train, y_train):
             st.dataframe(board, use_container_width=True)
         if trained is not None:
             col1, col2, col3 = st.columns([1, 0.7, 1])
-            col2.download_button("Download Model", lambda: model_bytes(trained), "model.pkl", use_container_width=True, key='save_model',
+            bundle = model_bundle(trained)     # only references here; serialized when clicked
+            col2.download_button("Download Model", lambda: model_bytes(bundle), "model.pkl", use_container_width=True, key='save_model',
                                  help="The model together with the recorded preparation steps. Use predict_with_bundle.py from this app's folder to predict raw new data with it.")
+            show_cross_validation(trained, X_train, y_train)
