@@ -8,7 +8,8 @@ import plotly.express as px
 import time
 from PIL import Image
 from wordcloud import WordCloud
-from utils import new_line
+from utils import new_line, short_list
+from data_check import class_balance
 from config import set_page_config
 from session_state import initial_state
 from data_loading import load_data
@@ -111,9 +112,19 @@ def find_training_problems():
     return problems
 
 def model_bytes(model):
-    # Serialize the model in memory (not to a shared file on disk)
+    # Serialize the model together with everything needed to prepare raw new data (in memory, not to a shared file on disk).
+    # Use it outside the app with predict_with_bundle.py.
+    from importlib.metadata import version
+    from recipe import required_inputs
+    ss = st.session_state
+    schema, recipe, model_columns = ss.get('input_schema') or {}, ss.get('recipe', []), list(ss['X_train'].columns)
+    target = ss.get('target_variable')
+    bundle = {"format": "click-analytics-model", "version": 1, "model": model, "problem_type": ss.get('problem_type'),
+              "target": target, "model_columns": model_columns, "input_schema": schema, "recipe": recipe,
+              "needed_inputs": [c for c in required_inputs(recipe, list(schema), [str(c) for c in model_columns]) if c != target],
+              "packages": {p: version(p) for p in ("flaml", "scikit-learn", "pandas", "numpy", "lightgbm", "xgboost", "catboost")}}
     buffer = io.BytesIO()
-    joblib.dump(model, buffer)
+    joblib.dump(bundle, buffer)
     return buffer.getvalue()
 
 # Automated model training with FLAML: model types users can choose from (label -> FLAML name)
@@ -172,6 +183,15 @@ def fit_and_store(X_train, y_train, problem_type, metric_label, model_labels, ti
 from flaml import AutoML
 model = AutoML()
 model.fit(X_train, y_train, {", ".join(f"{k}={v!r}" for k, v in settings.items())})
+\n """
+    # Balanced class weights: rows of rare classes count more (computed from the training set only)
+    if problem_type == "Classification" and st.session_state.get('balance_classes') and class_balance(y_train)[0]:
+        from sklearn.utils.class_weight import compute_sample_weight
+        settings["sample_weight"] = compute_sample_weight("balanced", y_train)
+        st.session_state.all_the_process += """
+# Balance classes: rows of rare classes count more in training
+from sklearn.utils.class_weight import compute_sample_weight
+sample_weight = compute_sample_weight("balanced", y_train)   # passed to model.fit(..., sample_weight=sample_weight)
 \n """
     automl = AutoML()
     model = add_training_preprocessing(automl)
@@ -299,6 +319,20 @@ def display_model_building_options(X_train, y_train):
             st.selectbox("Scale Features (Optional)", ["None"] + list(SCALERS), key='train_scale',
                          help="Scales features using statistics from the training set only, so no test data leaks into training.")
 
+        # Imbalanced classes: accuracy can look good while the small classes are never predicted
+        if problem_type == "Classification" and y_train is not None:
+            minority, share = class_balance(y_train)
+            if minority:
+                st.info(f"**Imbalanced classes:** {short_list([str(c) for c in minority])} "
+                        f"{'is' if len(minority) == 1 else 'are'} only {share:.0%} of the training rows"
+                        f"{' (the smallest)' if len(minority) > 1 else ''}. A model can then score a high accuracy while rarely predicting "
+                        f"{'it' if len(minority) == 1 else 'them'}. "
+                        + ("Consider **F1 Score** or **ROC AUC** as the optimization metric, and " if metric_label == "Accuracy" else "You can ")
+                        + "tick **Balance classes** so every class counts equally in training.")
+                st.checkbox("Balance classes", value=False, key='balance_classes',
+                            help="Gives the rows of smaller classes more weight in training (scikit-learn's 'balanced' weights), "
+                                 "so the model doesn't ignore them. Nothing is added to or removed from the data.")
+
         # Block training until the split data is clean, and tell the user why
         n_dup = count_duplicate_rows()
         if n_dup:
@@ -339,4 +373,4 @@ def display_model_building_options(X_train, y_train):
         if trained is not None:
             col1, col2, col3 = st.columns([1, 0.7, 1])
             col2.download_button("Download Model", lambda: model_bytes(trained), "model.pkl", use_container_width=True, key='save_model',
-                                 help="A FLAML model: loading it in Python requires the flaml package.")
+                                 help="The model together with the recorded preparation steps. Use predict_with_bundle.py from this app's folder to predict raw new data with it.")

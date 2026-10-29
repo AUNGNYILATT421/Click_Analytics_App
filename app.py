@@ -25,6 +25,9 @@ from missing_values_handler import handle_missing_values
 from CTGD import handle_categorical_data
 from recipe import build_input_schema
 from prediction import show_prediction
+from undo import checkpoint, show_steps_panel
+from data_check import show_data_check
+from guide import show_guide
 
 # Set configuration and initialize state
 set_page_config()
@@ -37,18 +40,15 @@ col2.image("./assets/logo.png", use_container_width=True)
 new_line(2)
 
 # Description
-st.markdown("""Welcome to Click Analytics! 🚀 
-Dive right into the future of data with our user-friendly platform designed for everyone—no coding or machine learning experience required!
-With just a few clicks, you can start preparing your data, training cutting-edge models, and uncovering valuable insights. 
-Whether you're a data enthusiast or a seasoned analyst, Click Analytics empowers you to effortlessly create, analyze, and explore. 
-What are you waiting for? Start building your very own analytics and models today and see what decisions you can empower with your data!!""", unsafe_allow_html=True)
+st.markdown("""Welcome to Click Analytics! 🚀 Prepare your data, train machine learning models, and predict new data, all in a few clicks and without writing code.
+The app checks your data along the way and tells you what to fix before it can cause problems.""")
 st.divider()
 
 
 # Dataframe selection
 st.markdown("<h2 align='center'> <b> Getting Started", unsafe_allow_html=True)
 new_line(1)
-st.write("The first step is to upload your data. You can upload your data either by : **Upload File**, or **Write URL**. In all ways the data should be a csv file or Excel and should not exceed 200 MB.")
+st.write("Start by loading your data: **Upload File** or **Write URL** (a CSV or Excel file of up to 200 MB), or try the app with **Sample Data**.")
 new_line(1)
 
 
@@ -62,6 +62,11 @@ def upload_click(): st.session_state.uploading_way = "upload"
 col1.markdown("<h5 align='center'> Upload File", unsafe_allow_html=True)
 col1.button("Upload File", key="upload_file", use_container_width=True, on_click=upload_click)
         
+# Sample data
+def sample_click(): st.session_state.uploading_way = "sample"
+col2.markdown("<h5 align='center'> Sample Data", unsafe_allow_html=True)
+col2.button("Sample Data", key="sample_data", use_container_width=True, on_click=sample_click)
+
 # URL
 def url_click(): st.session_state.uploading_way = "url"
 col3.markdown("<h5 align='center'> Write URL", unsafe_allow_html=True)
@@ -82,6 +87,16 @@ if st.session_state.df is None:
             except Exception as e:
                 st.error(f"Error loading the file: {e}")
 
+    # Sample data: small datasets bundled with scikit-learn (no download needed)
+    elif uploading_way == "sample":
+        from sklearn import datasets
+        samples = {"Breast Cancer (classification, 569 rows)": datasets.load_breast_cancer,
+                   "Wine (3-class classification, 178 rows)": datasets.load_wine,
+                   "Diabetes (regression, 442 rows)": datasets.load_diabetes}
+        choice = st.selectbox("Choose a sample dataset", list(samples), index=None, placeholder="Choose…")
+        if choice:
+            st.session_state.df = samples[choice](as_frame=True).frame
+
     # URL
     elif uploading_way == "url":
         url = st.text_input("Enter URL")
@@ -100,6 +115,9 @@ if st.session_state.df is not None:
     if st.session_state.get('input_schema') is None:
         st.session_state['input_schema'] = build_input_schema(st.session_state.df)
         st.session_state['recipe'] = []
+
+    # Keep a copy of the data after each step, for Undo (a step applied in the previous run is captured here)
+    checkpoint()
 
     # Re-initialize the variables from the state
     df = st.session_state.df
@@ -122,6 +140,9 @@ if st.session_state.df is not None:
 
     st.divider()
     new_line()
+
+    # Common data problems, in plain language
+    show_data_check(df)
 
     # Call to the EDA module function
     eda_module.show_eda(df)
@@ -618,7 +639,13 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
                     # Show Evaluation Metric Plot
                     new_line()
                     st.markdown("### Evaluation Metric Plot")
-                    st.line_chart(st.session_state['metrics_df'])
+                    # Altair keeps the sets in order (st.line_chart sorts them alphabetically: Test before Train)
+                    import altair as alt
+                    metrics_df = st.session_state['metrics_df']
+                    long = metrics_df.rename_axis("Set").reset_index().melt("Set", var_name="Metric", value_name="Score")
+                    st.altair_chart(alt.Chart(long).mark_line(point=True).encode(
+                        x=alt.X("Set:N", sort=list(metrics_df.index), title=None), y=alt.Y("Score:Q"), color="Metric:N",
+                        tooltip=["Set", "Metric", alt.Tooltip("Score:Q", format=".4f")]), use_container_width=True)
 
                     # Show ROC Curve as plot
                     if "AUC Score" in evaluation_metric:
@@ -712,3 +739,9 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
             st.session_state.clear()
             st.rerun()
 
+    # The sidebar: the workflow guide, then the steps applied so far with Undo.
+    # Drawn last, so a step applied, a split, or a trained model in this run is already shown
+    if st.session_state.get('df') is not None:
+        checkpoint()
+        show_guide()
+        show_steps_panel()

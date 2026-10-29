@@ -4,7 +4,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from utils import new_line
+from utils import new_line, short_list
+from data_check import near_leaks, NEAR_LEAK
 from recipe import record_step
 
 def display_splitting_options(df):
@@ -18,7 +19,14 @@ def display_splitting_options(df):
     with col2:
         sets = st.selectbox("Select The Split Sets", ["Select", "Train and Test", "Train, Validation, and Test"], key='sets', help="Train Set is the data used to train the model. Validation Set is the data used to validate the model. Test Set is the data used to test the model.")
         st.session_state['split_sets'] = sets
-    
+
+    # Warn (but don't remove) when a feature is almost identical to the target
+    suspicious = near_leaks(df, target) if target is not None else []
+    if suspicious:
+        st.warning(f"{short_list([str(c) for c in suspicious])} {'is' if len(suspicious) == 1 else 'are'} at least {NEAR_LEAK:.0%} correlated "
+                   f"with the target **`{target}`**. A feature this close to the target is often built from it, or recorded after it is "
+                   "known, and won't be available when predicting new data. If so, delete it before splitting; if not, you can keep it.")
+
     return target, sets
 
 def remove_target_leaks(df, target):

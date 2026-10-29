@@ -5,7 +5,11 @@
 import pandas as pd
 import streamlit as st
 from utils import new_line, short_list
-from recipe import required_inputs, prepare_row, feature_sources, target_steps
+from data_loading import load_data
+from recipe import required_inputs, prepare_row, prepare_rows, feature_sources, target_steps, input_kind
+
+# Largest file predicted at once: keeps memory use small on a laptop and on Streamlit Community Cloud
+MAX_BATCH_ROWS = 100_000
 
 
 def build_row(values, schema):
@@ -19,9 +23,61 @@ def build_row(values, schema):
             data[col] = pd.Series([float(value)], dtype="float64")
         elif kind == "bool":
             data[col] = pd.Series([bool(value)], dtype="bool")
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            # A number typed for a column stored as text: keep it as text, the recorded conversion turns it into a number
+            data[col] = pd.Series([str(int(value)) if float(value).is_integer() else repr(float(value))], dtype=schema[col]["dtype"])
         else:
             data[col] = pd.Series([value], dtype=schema[col]["dtype"])
     return pd.DataFrame(data)
+
+
+def build_rows(df, needed, schema, recipe=()):
+    # Many rows from an uploaded file, with the column types the data had when it was loaded.
+    # Returns (rows that can be prepared, {row index: problem})
+    problems, data = {}, {}
+    def flag(mask, message):
+        for i in df.index[mask]:
+            problems.setdefault(i, message(i))
+    for col in needed:
+        s = df[col]
+        empty = s.isna() | s.astype(str).str.strip().eq("")
+        flag(empty, lambda i, c=col: f"**`{c}`** is empty.")
+        kind = input_kind(col, schema, recipe)
+        if kind in ("int", "float"):
+            num = pd.to_numeric(s, errors='coerce')
+            flag(num.isna() & ~empty, lambda i, c=col: f"**`{c}`** = `{s[i]}` isn't a number.")
+            if kind == "int":
+                flag(num.notna() & (num % 1 != 0), lambda i, c=col: f"**`{c}`** = `{s[i]}` isn't a whole number.")
+            if schema[col].get("non_negative"):
+                flag(num < 0, lambda i, c=col: f"**`{c}`** = `{s[i]}` is negative, but the data had no negative values.")
+            if schema[col]["kind"] == "category":
+                # Stored as text when loaded: keep the text, the recorded conversion turns it into a number
+                data[col] = s.astype(object).where(s.isna(), s.astype(str).str.strip()).astype(schema[col]["dtype"])
+            elif kind == "int":
+                data[col] = num.where(num.notna() & (num % 1 == 0), 0).astype("int64")
+            else:
+                data[col] = num.astype("float64")
+        elif kind == "bool":
+            mapped = s.astype(str).str.strip().str.lower().map({"true": True, "false": False, "1": True, "0": False, "1.0": True, "0.0": False})
+            flag(mapped.isna() & ~empty, lambda i, c=col: f"**`{c}`** = `{s[i]}` isn't True or False.")
+            data[col] = mapped.fillna(False).astype(bool)
+        else:
+            # A file may read text categories such as "1" as numbers; compare them as text when the training values were text
+            if all(isinstance(v, str) for v in schema[col]["options"]):
+                s = s.astype(object).where(s.isna(), s.astype(str).str.strip())
+            data[col] = s.astype(schema[col]["dtype"]) if schema[col].get("dtype") is not None else s
+    rows = pd.DataFrame(data, index=df.index)
+    return rows.drop(index=list(problems)), problems
+
+
+def predict_frame(model, prepared, problem_type):
+    # Predictions (and class probabilities) for prepared rows, as columns to add to the user's file
+    out = pd.DataFrame({"Prediction": model.predict(prepared)}, index=prepared.index)
+    if problem_type == "Classification" and hasattr(model, "predict_proba"):
+        probs = model.predict_proba(prepared)
+        for j, c in enumerate(model.classes_):
+            out[f"Probability {c}"] = probs[:, j].round(4)
+    return out
 
 
 def show_prediction():
@@ -43,53 +99,134 @@ def show_prediction():
     st.markdown("### 🔮 Prediction")
     new_line()
     with st.expander("Predict on New Data"):
-        st.write(f"Enter the values of one new row. They are prepared with exactly the same steps as the training data "
-                 f"(using the values learned from it), then the trained model predicts **`{target}`**.")
+        one_tab, file_tab = st.tabs(["One row", "Many rows (file)"])
+        with one_tab:
+            st.write(f"Enter the values of one new row. They are prepared with exactly the same steps as the training data "
+                     f"(using the values learned from it), then the trained model predicts **`{target}`**.")
 
-        # One field per original column the model needs; every field starts empty and must be filled
-        values = {}
-        columns = st.columns(2)
-        for i, col in enumerate(needed):
-            info, key = schema[col], f"predict_input_{col}"
-            with columns[i % 2]:
-                if info["kind"] in ("category", "bool"):
-                    values[col] = st.selectbox(str(col), info["options"], index=None, placeholder="Choose…", key=key)
-                elif info["kind"] == "int":
-                    values[col] = st.number_input(str(col), value=None, step=1, format="%d", placeholder="Enter a whole number", key=key)
-                else:
-                    values[col] = st.number_input(str(col), value=None, format="%.4f", placeholder="Enter a number", key=key)
+            # One field per original column the model needs; every field starts empty and must be filled
+            values = {}
+            columns = st.columns(2)
+            for i, col in enumerate(needed):
+                info, key, kind = schema[col], f"predict_input_{col}", input_kind(col, schema, recipe)
+                # Columns that had no negative values in the data don't accept negative numbers
+                low = info.get("non_negative")
+                with columns[i % 2]:
+                    if kind in ("category", "bool"):
+                        values[col] = st.selectbox(str(col), info["options"], index=None, placeholder="Choose…", key=key)
+                    elif kind == "int":
+                        values[col] = st.number_input(str(col), value=None, step=1, format="%d", min_value=0 if low else None,
+                                                      placeholder="Enter a whole number" + (" (0 or more)" if low else ""), key=key)
+                    else:
+                        values[col] = st.number_input(str(col), value=None, format="%.4f", min_value=0.0 if low else None,
+                                                      placeholder="Enter a number" + (" (0 or more)" if low else ""), key=key)
 
-        empty = [col for col, value in values.items() if value is None]
-        prepared, problem = None, None
-        if from_target:
-            problem = (f"{'the feature' if len(from_target) == 1 else 'the features'} {short_list(from_target)} "
-                       f"{'is' if len(from_target) == 1 else 'are'} built from the target **`{target}`** itself, which isn't known for new data. "
-                       "This also means the model saw part of the answer during training: remove these features, then split and train again.")
-            st.warning(f"This row can't be predicted: {problem}")
-        elif empty:
-            st.info(f"Please fill in every field. Still empty: {short_list(empty)}.")
-        else:
-            prepared, problem = prepare_row(build_row(values, schema), recipe, model_columns)
-            if problem:
+            empty = [col for col, value in values.items() if value is None]
+            prepared, problem = None, None
+            if from_target:
+                problem = (f"{'the feature' if len(from_target) == 1 else 'the features'} {short_list(from_target)} "
+                           f"{'is' if len(from_target) == 1 else 'are'} built from the target **`{target}`** itself, which isn't known for new data. "
+                           "This also means the model saw part of the answer during training: remove these features, then split and train again.")
                 st.warning(f"This row can't be predicted: {problem}")
-
-        col1, col2, col3 = st.columns([1, 0.7, 1])
-        if col2.button("Predict", use_container_width=True, key="predict_apply", disabled=bool(empty or problem)):
-            prediction = model.predict(prepared)[0]
-            if st.session_state.get('problem_type') == "Classification":
-                st.success(f"Predicted **`{target}`**: **{prediction}**")
-                probabilities = pd.DataFrame({"Class": [str(c) for c in model.classes_],
-                                              "Probability": model.predict_proba(prepared)[0].round(4)})
-                st.dataframe(probabilities.sort_values("Probability", ascending=False), use_container_width=True, hide_index=True)
+            elif empty:
+                st.info(f"Please fill in every field. Still empty: {short_list(empty)}.")
             else:
-                st.success(f"Predicted **`{target}`**: **{float(prediction):,.4f}**")
-            changed = target_steps(recipe, target)
-            if changed:
-                st.info(f"Note: **`{target}`** itself was changed before training ({'; '.join(changed)}), "
-                        "so the prediction is on that changed scale, not in the original units.")
+                prepared, problem = prepare_row(build_row(values, schema), recipe, model_columns)
+                if problem:
+                    st.warning(f"This row can't be predicted: {problem}")
+
+            col1, col2, col3 = st.columns([1, 0.7, 1])
+            if col2.button("Predict", use_container_width=True, key="predict_apply", disabled=bool(empty or problem)):
+                prediction = model.predict(prepared)[0]
+                if st.session_state.get('problem_type') == "Classification":
+                    st.success(f"Predicted **`{target}`**: **{prediction}**")
+                    probabilities = pd.DataFrame({"Class": [str(c) for c in model.classes_],
+                                                  "Probability": model.predict_proba(prepared)[0].round(4)})
+                    st.dataframe(probabilities.sort_values("Probability", ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.success(f"Predicted **`{target}`**: **{float(prediction):,.4f}**")
+                changed = target_steps(recipe, target)
+                if changed:
+                    st.info(f"Note: **`{target}`** itself was changed before training ({'; '.join(changed)}), "
+                            "so the prediction is on that changed scale, not in the original units.")
+
+        with file_tab:
+            predict_file(model, needed, schema, recipe, model_columns, target, from_target)
 
         # Show how the row is prepared, so the process is transparent
         if recipe:
-            st.caption("Steps applied to the new row, in order: "
+            st.caption("Steps applied to new rows, in order: "
                        + " → ".join(step["label"] for step in recipe if step["op"] != "rows")
                        + (" (row cleaning steps such as deleting rows apply to the training data only)." if any(s["op"] == "rows" for s in recipe) else "."))
+
+
+def predict_table(df, model, needed, schema, recipe, model_columns, problem_type):
+    # The user's rows plus Prediction (and probability) columns, and a Problem column for rows that can't be predicted.
+    # Returns (result, problem for all rows or None). Also used outside the app by predict_with_bundle.py.
+    rows, problems = build_rows(df, needed, schema, recipe)
+    prepared, step_problems, problem = prepare_rows(rows, recipe, model_columns)
+    if problem:
+        return None, problem
+    problems.update(step_problems)
+    out = (predict_frame(model, prepared, problem_type) if not prepared.empty else pd.DataFrame({"Prediction": []})).reindex(df.index)
+    # Plain text in the file: the messages use Markdown (**`col`**) for the page
+    out["Problem"] = pd.Series({i: m.replace("**", "").replace("`", "") for i, m in problems.items()}, dtype=object).reindex(df.index)
+    # The results first, then the user's own columns
+    return pd.concat([out, df.drop(columns=[c for c in out.columns if c in df.columns])], axis=1), None
+
+
+def predict_file(model, needed, schema, recipe, model_columns, target, from_target):
+    # Predict every row of an uploaded file; rows that can't be predicted get a reason instead of stopping the whole file
+    st.write(f"Upload a CSV or Excel file of new rows. It needs the {len(needed)} columns the model uses ({short_list(needed, limit=8)}); other columns are kept but not used. "
+             f"Every row is prepared with the same steps as the training data, then the model predicts **`{target}`**. "
+             f"Up to {MAX_BATCH_ROWS:,} rows at a time.")
+    if from_target:
+        st.warning(f"These rows can't be predicted: the model uses {short_list(from_target)}, built from the target **`{target}`** itself. "
+                   "Remove these features, then split and train again.")
+        return
+    uploaded = st.file_uploader("Upload new rows", type=["csv", "xlsx", "xls"], key="predict_file")
+    if uploaded is None:
+        st.session_state.pop('batch_prediction', None)
+        return
+    try:
+        df = load_data(uploaded).reset_index(drop=True)
+    except Exception as e:
+        st.error(f"Error loading the file: {e}")
+        return
+    missing = [c for c in needed if c not in df.columns]
+    if missing:
+        st.warning(f"The file is missing these columns: {short_list(missing, limit=len(missing))}.")
+        return
+    if len(df) > MAX_BATCH_ROWS:
+        st.warning(f"The file has {len(df):,} rows. Please split it into files of at most {MAX_BATCH_ROWS:,} rows.")
+        return
+
+    # Predict only on click; keep the result for this file and this model across reruns (e.g. the download click)
+    run_key = (uploaded.file_id, id(model))
+    col1, col2, col3 = st.columns([1, 0.7, 1])
+    if col2.button("Predict File", use_container_width=True, key="predict_file_apply"):
+        result, problem = predict_table(df, model, needed, schema, recipe, model_columns, st.session_state.get('problem_type'))
+        if problem:
+            st.warning(f"The rows can't be predicted: {problem}")
+            return
+        st.session_state['batch_prediction'] = {"key": run_key, "result": result}
+
+    saved = st.session_state.get('batch_prediction')
+    if saved and saved["key"] == run_key:
+        result = saved["result"]
+        failed = int(result["Problem"].notna().sum())
+        if failed == 0:
+            st.success(f"Predicted all {len(result):,} rows.")
+        else:
+            st.warning(f"Predicted {len(result) - failed:,} of {len(result):,} rows. "
+                       f"{failed:,} rows can't be predicted; the **Problem** column says why.")
+        st.dataframe(result.head(100), use_container_width=True)
+        if len(result) > 100:
+            st.caption(f"Showing the first 100 of {len(result):,} rows. Download the file to see all of them.")
+        changed = target_steps(recipe, target)
+        if changed:
+            st.info(f"Note: **`{target}`** itself was changed before training ({'; '.join(changed)}), "
+                    "so the predictions are on that changed scale, not in the original units.")
+        col1, col2, col3 = st.columns([1, 0.7, 1])
+        col2.download_button("Download Predictions", lambda: result.to_csv(index=False).encode('utf-8'), "predictions.csv",
+                             use_container_width=True, key="predict_file_download")
