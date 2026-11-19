@@ -60,7 +60,7 @@ def show_steps_panel():
     ss = st.session_state
     recipe = ss.get('recipe') or []
     with st.sidebar:
-        st.markdown("### 🧾 Steps Applied")
+        st.markdown("### Steps Applied")
         message = ss.pop('undo_message', None)
         if message:
             st.success(message)
@@ -73,7 +73,7 @@ def show_steps_panel():
         st.markdown("\n".join(f"{i}. {step['label']}" for i, step in enumerate(shown, start=len(recipe) - len(shown) + 1)))
         history = ss.get('undo_history', [])
         if can_undo():
-            st.button("↩️ Undo Last Step", on_click=undo_last_step, use_container_width=True, key="undo_last_step",
+            st.button("Undo Last Step", on_click=undo_last_step, use_container_width=True, key="undo_last_step",
                       help=f"Restores the data as it was before the last step. Up to {MAX_UNDO_STEPS} steps can be undone in a row.")
         elif history and history[-1]["df"] is None:
             st.caption("Undo isn't available: the data is too large to keep copies of it.")

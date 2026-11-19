@@ -13,7 +13,7 @@ def handle_categorical_data(st, df):
 
     # Encoding
     new_line()
-    st.markdown("### 🔠 Handling Categorical Data", unsafe_allow_html=True)
+    st.markdown("### Handling Categorical Data", unsafe_allow_html=True)
     new_line()
     with st.expander("Show Encoding"):
         new_line()
@@ -104,13 +104,13 @@ def handle_categorical_data(st, df):
             total = sum(new_cols.values())
             if total > ONE_HOT_MAX_TOTAL or max(new_cols.values()) > ONE_HOT_MAX_PER_FEATURE:
                 if len(enc_feat) == 1:
-                    st.info(f"💡 **Recommendation:** One Hot Encoding will create **{total}** new columns for **`{enc_feat[0]}`**. "
+                    st.info(f"**Recommendation:** One Hot Encoding will create **{total}** new columns for **`{enc_feat[0]}`**. "
                             "For features with many categories, **Ordinal Encoding** is recommended instead: it keeps one column per "
                             "feature and works well with the tree-based models FLAML mostly uses.")
                 else:
                     # One overall recommendation for several features
                     many = [feat for feat, n in sorted(new_cols.items(), key=lambda kv: -kv[1]) if n > ONE_HOT_MAX_PER_FEATURE] or enc_feat
-                    st.info(f"💡 **Recommendation:** for these **{len(enc_feat)}** features, **Ordinal Encoding** is recommended overall. "
+                    st.info(f"**Recommendation:** for these **{len(enc_feat)}** features, **Ordinal Encoding** is recommended overall. "
                             f"One Hot Encoding would create **{total}** new columns, mostly from {short_list(many)} (many categories). "
                             "Ordinal Encoding keeps one column per feature and works well with the tree-based models FLAML mostly uses.")
 

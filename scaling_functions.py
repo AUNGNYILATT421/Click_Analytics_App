@@ -114,10 +114,10 @@ def display_scaling_options(st, df):
         if len(scale_feat) == 1:
             recommendations = scaling_recommendations(df, scale_feat)
             if not recommendations.empty:
-                st.markdown("💡 **Recommended scaling** for the selected feature:")
+                st.markdown("**Recommended scaling** for the selected feature:")
                 st.dataframe(recommendations, use_container_width=True, hide_index=True)
         elif len(scale_feat) > 1:
-            st.info(f"💡 **Recommendation:** {overall_scaling_recommendation(df, scale_feat)}")
+            st.info(f"**Recommendation:** {overall_scaling_recommendation(df, scale_feat)}")
         if scale_feat:
             st.caption("Tree-based models (LightGBM, XGBoost, Random Forest, Extra Trees, CatBoost) don't need scaling. "
                        "Scaling mainly helps Logistic Regression and K-Nearest Neighbors.")
@@ -125,7 +125,7 @@ def display_scaling_options(st, df):
         # Features with missing values can't be scaled
         missing_cols = [col for col in scale_feat if df[col].isnull().any()]
         if missing_cols:
-            st.warning(f"The Features **`{missing_cols}`** have missing values, so they can't be scaled yet. Please handle them in the **⚠️ Missing Values** section first.")
+            st.warning(f"The Features **`{missing_cols}`** have missing values, so they can't be scaled yet. Please handle them in the **Missing Values** section first.")
 
         if scale_feat and scaling != "Select":
                 new_line()

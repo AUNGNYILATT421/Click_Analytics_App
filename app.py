@@ -36,13 +36,13 @@ initial_state()
 
 
 # Logo 
-col1, col2, col3 = st.columns([0.25,1,0.25])
+col1, col2, col3 = st.columns([1, 0.45, 1])
 col2.image("./assets/logo.png", use_container_width=True)
-new_line(2)
+st.markdown("<h1 style='text-align: center; margin-top: 0;'>Click Analytics</h1>", unsafe_allow_html=True)
 
 # Description
-st.markdown("""Welcome to Click Analytics! 🚀 Prepare your data, train machine learning models, and predict new data, all in a few clicks and without writing code.
-The app checks your data along the way and tells you what to fix before it can cause problems.""")
+st.markdown("""Click Analytics lets you prepare data, train machine learning models, and predict new data without writing code.
+The application checks your data at each step and explains what to fix before it can affect the results.""")
 st.divider()
 
 
@@ -60,17 +60,14 @@ col1, col2, col3 = st.columns(3,gap='large')
 
 # Upload
 def upload_click(): st.session_state.uploading_way = "upload"
-col1.markdown("<h5 align='center'> Upload File", unsafe_allow_html=True)
 col1.button("Upload File", key="upload_file", use_container_width=True, on_click=upload_click)
         
 # Sample data
 def sample_click(): st.session_state.uploading_way = "sample"
-col2.markdown("<h5 align='center'> Sample Data", unsafe_allow_html=True)
 col2.button("Sample Data", key="sample_data", use_container_width=True, on_click=sample_click)
 
 # URL
 def url_click(): st.session_state.uploading_way = "url"
-col3.markdown("<h5 align='center'> Write URL", unsafe_allow_html=True)
 col3.button("Write URL", key="write_url", use_container_width=True, on_click=url_click)
 
 
@@ -81,7 +78,7 @@ if st.session_state.df is None:
     # Upload
     if uploading_way == "upload":
         uploaded_file = st.file_uploader("Upload the Dataset", type=["csv", "xlsx", "xls", "zip"],
-                                         help="A CSV or Excel file, or a project saved with 💾 Save Project (.zip).")
+                                         help="A CSV or Excel file, or a project saved with Save Project (.zip).")
         if uploaded_file:
             if uploaded_file.name.lower().endswith(".zip"):
                 # A saved project: the data plus the recorded steps (split and train again after opening)
@@ -174,7 +171,7 @@ if st.session_state.df is not None:
 
     # Scaling
     new_line()
-    st.markdown("### ⚖️ Scaling", unsafe_allow_html=True)
+    st.markdown("### Scaling", unsafe_allow_html=True)
     new_line()
     with st.expander("Show Scaling"):
         new_line()
@@ -190,7 +187,7 @@ if st.session_state.df is not None:
     
     # Feature Engineering
     new_line()
-    st.markdown("### ⚡ Feature Engineering", unsafe_allow_html=True)
+    st.markdown("### Feature Engineering", unsafe_allow_html=True)
     new_line()
     with st.expander("Show Feature Engineering"):
         df = extract_feature(df)
@@ -212,7 +209,7 @@ if st.session_state.df is not None:
 
     # Evaluation
     if st.session_state['trained_model_bool']:
-        st.markdown("### 📈 Evaluation")
+        st.markdown("### Evaluation")
         new_line()
         with st.expander("Model Evaluation"):
             # Use the model trained in this session (not a shared file on disk)
@@ -727,37 +724,37 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
     st.divider()
     col1, col2, col4, col3 = st.columns(4, gap='small')
 
-    if col1.button("🎬 Show df", use_container_width=True):
+    if col1.button("Show Data", use_container_width=True):
         new_line()
-        st.subheader(" 🎬 Show The Dataframe")
-        st.write("The dataframe is the dataframe that is used on this application to build the Machine Learning model. You can see the dataframe below 👇")
+        st.subheader("Current Data")
+        st.write("The data as it is now, after the changes applied so far. This is the data used to build the model.")
         new_line()
         st.dataframe(df, use_container_width=True)
 
     # Build the CSV in memory instead of writing df.csv to disk on every rerun
     # Build the CSV only when the button is clicked: converting a wide DataFrame on every rerun is slow
     df_for_download = st.session_state.df
-    if col2.download_button("📌 Download df", lambda: df_for_download.to_csv(index=False).encode('utf-8'), "df.csv", key='save_df', use_container_width=True):
-        st.success("Downloaded Successfully!")
+    if col2.download_button("Download Data (CSV)", lambda: df_for_download.to_csv(index=False).encode('utf-8'), "df.csv", key='save_df', use_container_width=True):
+        st.success("Download started.")
 
     # Save the data and the recorded steps to continue later (built only when clicked)
     # The file is built when clicked, outside the page run where session state isn't available: pass the values now
     project = (st.session_state.df, st.session_state['input_schema'], list(st.session_state['recipe']))
-    col4.download_button("💾 Save Project", lambda: project_bytes(*project),
+    col4.download_button("Save Project", lambda: project_bytes(*project),
                          "click_analytics_project.zip", key='save_project', use_container_width=True,
                          help="Saves the data and the recorded steps. Open it later with Upload File. The trained model isn't saved: split and train again.")
 
 
-    if col3.button("⛔ Reset", use_container_width=True):
+    if col3.button("Reset App", use_container_width=True):
         new_line()
-        st.subheader("⛔ Reset")
-        st.write("Click the button below to reset the app and start over again")
+        st.subheader("Reset")
+        st.write("This clears the data, the applied steps, and any trained model, and starts over. Unsaved work is lost.")
         new_line()
         st.session_state.reset_1 = True
 
     if st.session_state.reset_1:
         col1, col2, col3 = st.columns(3)
-        if col2.button("⛔ Reset", use_container_width=True, key='reset'):
+        if col2.button("Confirm Reset", use_container_width=True, key='reset'):
             st.session_state.df = None
             st.session_state.clear()
             st.rerun()

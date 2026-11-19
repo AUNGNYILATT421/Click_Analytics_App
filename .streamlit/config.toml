@@ -1,0 +1,12 @@
+# Appearance of the app: a calm, professional colour scheme (instead of Streamlit's default red)
+[theme]
+base = "light"
+primaryColor = "#1F4E79"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F5F9"
+textColor = "#1F2933"
+font = "sans serif"
+
+[client]
+# Hide the developer toolbar (Deploy button, rerun options) from people using the app
+toolbarMode = "viewer"

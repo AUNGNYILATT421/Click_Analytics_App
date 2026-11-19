@@ -41,7 +41,7 @@ def show_guide():
     steps = guide_steps()
     icons = {True: "✓", False: "○", None: "○"}
     with st.sidebar:
-        st.markdown("### 🧭 Workflow Guide")
+        st.markdown("### Workflow Guide")
         st.markdown("\n".join(f"{i}. {icons[done]} {name}{' (optional)' if done is None else ''}" for i, (name, _, done) in enumerate(steps, start=1)))
         next_step = next(((name, where) for name, where, done in steps if done is False), None)
         if next_step:

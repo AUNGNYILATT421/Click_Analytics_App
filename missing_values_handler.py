@@ -47,7 +47,7 @@ def format_row_ranges(rows):
 def handle_missing_values(df):
     # Missing Values
     new_line()
-    st.markdown("### ⚠️ Missing Values", unsafe_allow_html=True)
+    st.markdown("### Missing Values", unsafe_allow_html=True)
     new_line()
     with st.expander("Show Missing Values"):
 
@@ -135,7 +135,7 @@ for col in {blank_cols}:
                 st.info(f"**`{col_missing}`** has no missing values.")
             else:
                 st.write(f"**{len(rows)}** rows have missing values in **`{col_missing}`**. "
-                         "Row numbers (you can paste them into **🕵️‍♂️ Exploratory Data Analysis → Delete Rows**):")
+                         "Row numbers (you can paste them into **Exploratory Data Analysis → Delete Rows**):")
                 st.code(format_row_ranges(rows), language=None)
                 st.dataframe(df.loc[rows], use_container_width=True, height=min(35 * len(rows) + 38, 300))
             new_line()

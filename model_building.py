@@ -79,7 +79,7 @@ def find_training_problems():
     n_dup = int(data.duplicated().sum())
     if n_dup and not st.session_state.get('allow_duplicates', False):
         problems.append(f"**Duplicate rows:** {n_dup} rows are exact copies of another row. "
-                        "Remove them in **🕵️‍♂️ Exploratory Data Analysis → Remove Duplicate Rows**, "
+                        "Remove them in **Exploratory Data Analysis → Remove Duplicate Rows**, "
                         "or tick **Train with duplicate rows** above.")
 
     # Duplicate columns: same name. When a file has a repeated header,
@@ -96,19 +96,19 @@ def find_training_problems():
             first_with_name[b] = name
     if dup_pairs:
         problems.append(f"**Duplicate columns:** {', '.join(dup_pairs)} have the same name. "
-                        "Remove one column of each pair in **🕵️‍♂️ Exploratory Data Analysis → Delete Columns**.")
+                        "Remove one column of each pair in **Exploratory Data Analysis → Delete Columns**.")
 
     text_cols = X.select_dtypes(exclude=[np.number, 'bool']).columns.tolist()
     if text_cols:
         problems.append(f"**Non-numeric features:** **`{text_cols}`** contain text. "
-                        "Encode them in **🔠 Handling Categorical Data**, or remove them.")
+                        "Encode them in **Handling Categorical Data**, or remove them.")
 
     missing_cols = X.columns[X.isnull().any()].tolist()
     if missing_cols and st.session_state.get('train_impute', "None") == "None":
         problems.append(f"**Missing values:** **`{missing_cols}`** have missing values. "
-                        "Handle them in **⚠️ Missing Values**, or choose **Fill Missing Values** above.")
+                        "Handle them in **Missing Values**, or choose **Fill Missing Values** above.")
     if y.isnull().any():
-        problems.append("**Missing values in the target:** please fill or drop them in **⚠️ Missing Values**.")
+        problems.append("**Missing values in the target:** please fill or drop them in **Missing Values**.")
 
     return problems
 
@@ -163,7 +163,7 @@ def automl_leaderboard(automl, metric, metric_label, problem_type):
         if loss is None or not np.isfinite(loss):
             continue
         score = loss if metric in LOWER_IS_BETTER else 1 - loss
-        rows.append({"Model": names.get(estimator, estimator) + (" 🏆" if estimator == automl.best_estimator else ""),
+        rows.append({"Model": names.get(estimator, estimator) + (" (selected)" if estimator == automl.best_estimator else ""),
                      f"Best validation {metric_label}": round(float(score), 4)})
     board = pd.DataFrame(rows)
     if not board.empty:
@@ -289,7 +289,7 @@ def show_permutation_importance(model, X_test, y_test):
 def display_model_building_options(X_train, y_train):
 
     new_line()
-    st.markdown("### 🤖 Building the Model")
+    st.markdown("### Building the Model")
     new_line()
     with st.expander(" Model Building"):
         st.write("Automated machine learning (FLAML): the app tries several model types, tunes their settings within the "
@@ -369,12 +369,12 @@ def display_model_building_options(X_train, y_train):
             if kind == "success":
                 st.success(text)
             else:
-                st.error(text, icon="⚠️")
+                st.error(text)
         trained = st.session_state.get('trained_model')
         board = st.session_state.get('automl_leaderboard')
         if trained is not None and board is not None and not board.empty:
             st.markdown("#### Leaderboard")
-            st.write("The best validation score of each model type FLAML tried (🏆 = the model used for evaluation).")
+            st.write("The best validation score of each model type FLAML tried. The model marked (selected) is used for evaluation and prediction.")
             st.dataframe(board, use_container_width=True)
         if trained is not None:
             col1, col2, col3 = st.columns([1, 0.7, 1])

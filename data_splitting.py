@@ -9,7 +9,7 @@ from data_check import near_leaks, NEAR_LEAK
 from recipe import record_step
 
 def display_splitting_options(df):
-    st.markdown("### 🪚 Data Splitting", unsafe_allow_html=True)
+    st.markdown("### Data Splitting", unsafe_allow_html=True)
     
     target, sets = None, None
     col1, col2 = st.columns(2)

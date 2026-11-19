@@ -96,7 +96,7 @@ def show_prediction():
     from_target = [str(c) for c in model_columns if target in sources.get(str(c), set())]
 
     new_line()
-    st.markdown("### 🔮 Prediction")
+    st.markdown("### Prediction")
     new_line()
     with st.expander("Predict on New Data"):
         one_tab, file_tab = st.tabs(["One row", "Many rows (file)"])

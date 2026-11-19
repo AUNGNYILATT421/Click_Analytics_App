@@ -84,7 +84,7 @@ def parse_row_indices(text, index):
 
 def show_eda(df):
     # Assuming necessary imports are available like numpy, pandas, seaborn, matplotlib, etc.
-    st.markdown("### 🕵️‍♂️ Exploratory Data Analysis", unsafe_allow_html=True)
+    st.markdown("### Exploratory Data Analysis", unsafe_allow_html=True)
     st.write("")  # To add a new line or space, if needed
     
 

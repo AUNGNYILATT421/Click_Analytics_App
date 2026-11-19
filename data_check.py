@@ -66,7 +66,7 @@ def show_data_check(df):
     # Recomputed only when the data changes (every change records a step), not on every click
     key = (tuple(step["label"] for step in st.session_state.get('recipe') or []), df.shape)
     issues = _cached_issues_for(df, key)
-    st.markdown("### 🩺 Data Check")
+    st.markdown("### Data Check")
     with st.expander("Show Data Check", expanded=bool(issues)):
         if not issues:
             st.success("No common problems found: no identifier, constant, mostly empty or duplicate data.")

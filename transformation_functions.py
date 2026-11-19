@@ -39,7 +39,7 @@ def overall_transformation_recommendation(df, features, trans):
 def display_transformation_options(st, df):
     # Data Transformation
     new_line()
-    st.markdown("### 🧬 Data Transformation", unsafe_allow_html=True)
+    st.markdown("### Data Transformation", unsafe_allow_html=True)
     new_line()
     with st.expander("Show Data Transformation"):
         new_line()
@@ -79,7 +79,7 @@ def display_transformation_options(st, df):
         # Features with missing values can't be transformed
         missing_cols = [col for col in trans_feat if df[col].isnull().any()]
         if missing_cols:
-            st.warning(f"The Features **`{missing_cols}`** have missing values, so they can't be transformed yet. Please handle them in the **⚠️ Missing Values** section first.")
+            st.warning(f"The Features **`{missing_cols}`** have missing values, so they can't be transformed yet. Please handle them in the **Missing Values** section first.")
 
         # The log isn't defined for negative numbers
         negative_cols = []
@@ -94,7 +94,7 @@ def display_transformation_options(st, df):
             # One overall recommendation for several features
             overall = overall_transformation_recommendation(df, trans_feat, trans)
             if overall:
-                st.info(f"💡 **Recommendation:** {overall}")
+                st.info(f"**Recommendation:** {overall}")
         for col in (trans_feat if len(trans_feat) == 1 else []):
             values = df[col].dropna()
             if values.empty:
@@ -110,7 +110,7 @@ def display_transformation_options(st, df):
                               "positive values explode (above about 709 they become infinite) and large negative values shrink to "
                               "almost 0, so Exponential Transformation is not recommended here.")
         if advice:
-            st.info("💡 **Recommendation:**\n\n" + "\n".join(f"- {a}" for a in advice))
+            st.info("**Recommendation:**\n\n" + "\n".join(f"- {a}" for a in advice))
 
         # Apply Transformation
         if trans_feat and trans != "Select":
