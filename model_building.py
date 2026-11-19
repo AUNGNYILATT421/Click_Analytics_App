@@ -358,7 +358,7 @@ def display_model_building_options(X_train, y_train):
         blocked = bool(training_problems) or not model_labels
         train_clicked = bool(st.session_state.get('train_model', False)) and not blocked
         col1, col2, col3 = st.columns([1, 0.7, 1])
-        col2.button("Train Model", disabled=blocked or train_clicked, key='train_model', use_container_width=True)
+        col2.button("Train Model", type="primary", disabled=blocked or train_clicked, key='train_model', use_container_width=True)
         if train_clicked:
             fit_and_store(X_train, y_train, problem_type, metric_label, model_labels, time_budget)
 

@@ -136,7 +136,7 @@ def show_prediction():
                     st.warning(f"This row can't be predicted: {problem}")
 
             col1, col2, col3 = st.columns([1, 0.7, 1])
-            if col2.button("Predict", use_container_width=True, key="predict_apply", disabled=bool(empty or problem)):
+            if col2.button("Predict", type="primary", use_container_width=True, key="predict_apply", disabled=bool(empty or problem)):
                 prediction = model.predict(prepared)[0]
                 if st.session_state.get('problem_type') == "Classification":
                     st.success(f"Predicted **`{target}`**: **{prediction}**")
@@ -205,7 +205,7 @@ def predict_file(model, needed, schema, recipe, model_columns, target, from_targ
     # Predict only on click; keep the result for this file and this model across reruns (e.g. the download click)
     run_key = (uploaded.file_id, id(model))
     col1, col2, col3 = st.columns([1, 0.7, 1])
-    if col2.button("Predict File", use_container_width=True, key="predict_file_apply"):
+    if col2.button("Predict File", type="primary", use_container_width=True, key="predict_file_apply"):
         result, problem = predict_table(df, model, needed, schema, recipe, model_columns, st.session_state.get('problem_type'))
         if problem:
             st.warning(f"The rows can't be predicted: {problem}")

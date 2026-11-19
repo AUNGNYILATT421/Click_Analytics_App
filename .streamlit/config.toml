@@ -1,11 +1,46 @@
-# Appearance of the app: a calm, professional colour scheme (instead of Streamlit's default red)
+# Appearance of the app, built with basic colour theory:
+# - Monochromatic base: every neutral and background is a tint or shade of the logo's slate navy (hue 210),
+#   so the interface feels like one family instead of plain grey.
+# - Complementary accent: a warm amber (hue 32, opposite the navy) used sparingly so key elements stand out.
+# - 60-30-10: about 60% white workspace, 30% navy / light-blue structure (sidebar, panels, table headers),
+#   10% accent (primary actions, highlights).
+# - Status colours (success, warning, error) keep their usual meaning.
+# Every text / background pair meets WCAG AA contrast (4.5:1 or more).
+
 [theme]
 base = "light"
-primaryColor = "#1F4E79"
+primaryColor = "#1D5C9A"               # interactive blue (6.9:1 on white)
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F2F5F9"
-textColor = "#1F2933"
+secondaryBackgroundColor = "#F2F6FB"   # light navy tint for inputs and panels
+textColor = "#1A2532"                  # navy-tinted near-black (15.5:1 on white)
+linkColor = "#1D5C9A"
+borderColor = "#D0DBE7"
+showWidgetBorder = true
+dataframeHeaderBackgroundColor = "#E1EBF4"
+dataframeHeaderTextColor = "#1E3852"
+dataframeBorderColor = "#D0DBE7"
+# Information boxes (recommendations, notes) in the palette's own blue
+blueColor = "#1D5C9A"
+blueBackgroundColor = "#E1EBF4"
+blueTextColor = "#1E3852"
 font = "sans serif"
+headingFontWeights = [700, 700, 650, 600, 600, 600]
+baseRadius = "0.5rem"
+# Chart colours: a colour-blind-safe categorical palette that starts with the same blue / amber pair
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+
+[theme.sidebar]
+backgroundColor = "#1A3047"            # deep navy, a shade of the logo colour
+secondaryBackgroundColor = "#28425D"   # sidebar panels and buttons
+textColor = "#EDF2F7"                  # 12.0:1 on the navy
+primaryColor = "#EE932B"               # amber accent for focus and hover (non-text, 5.7:1)
+borderColor = "#3A5675"
+# The guide's "Suggested next" box carries the amber accent: the one call to action that should stand out
+blueBackgroundColor = "#F2A64E"        # 6.6:1 against the navy, so it pops
+blueTextColor = "#1A2532"              # dark text on amber, 7.6:1
+greenBackgroundColor = "#1E4A38"       # "All the main steps are done"
+greenTextColor = "#DDF5E7"             # 8.7:1
+linkColor = "#EE932B"
 
 [client]
 # Hide the developer toolbar (Deploy button, rerun options) from people using the app

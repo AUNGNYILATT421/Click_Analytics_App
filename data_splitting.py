@@ -95,7 +95,7 @@ def discard_split_if_data_changed():
 def train_test_split_ui(df, target, train_size, test_size):
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("Split Data"):
+        if st.button("Split Data", type="primary"):
             leaks = remove_target_leaks(df, target)
             st.session_state.all_the_process += f"""
 # Data Splitting
@@ -135,7 +135,7 @@ def train_val_test_split_ui(df, target, train_size, val_size, test_size):
     else:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("Split Data", use_container_width=True):
+            if st.button("Split Data", type="primary", use_container_width=True):
                 leaks = remove_target_leaks(df, target)
                 st.session_state.all_the_process += f"""
 # Data Splitting
