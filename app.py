@@ -652,13 +652,27 @@ print("R2 Score on Test Set: ", r2_score(y_test, y_pred_test))
                     # Show Evaluation Metric Plot
                     new_line()
                     st.markdown("### Evaluation Metric Plot")
-                    # Altair keeps the sets in order (st.line_chart sorts them alphabetically: Test before Train)
+                    # One small bar chart per metric, each with its own scale: metrics such as MSE (thousands) and
+                    # R² (0 to 1) can't share an axis. Bars, because Train / Validation / Test are categories, not a trend.
                     import altair as alt
                     metrics_df = st.session_state['metrics_df']
+                    sets, metrics = list(metrics_df.index), list(metrics_df.columns)
                     long = metrics_df.rename_axis("Set").reset_index().melt("Set", var_name="Metric", value_name="Score")
-                    st.altair_chart(alt.Chart(long).mark_line(point=True).encode(
-                        x=alt.X("Set:N", sort=list(metrics_df.index), title=None), y=alt.Y("Score:Q"), color="Metric:N",
-                        tooltip=["Set", "Metric", alt.Tooltip("Score:Q", format=".4f")]), use_container_width=True)
+                    set_colors = {"Train": "#2a78d6", "Validation": "#1baf7a", "Test": "#eb6834"}   # fixed colour per set
+                    columns = {1: 1, 2: 2, 4: 2}.get(len(metrics), 3)            # a grid that fits the page width
+                    base = alt.Chart().encode(x=alt.X("Set:N", sort=sets, title=None, axis=alt.Axis(labelAngle=0)),
+                                              y=alt.Y("Score:Q", title=None, scale=alt.Scale(zero=True, nice=False)))
+                    bars = base.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=34).encode(
+                        color=alt.Color("Set:N", scale=alt.Scale(domain=sets, range=[set_colors.get(s, "#6250d6") for s in sets]), legend=None),
+                        tooltip=["Metric", "Set", alt.Tooltip("Score:Q", format=",.4f")])
+                    labels = base.mark_text(dy=-7, fontSize=11, color="#1A2532").encode(text=alt.Text("Score:Q", format=",.4~f"))
+                    # An invisible point 15% above the tallest bar of each chart leaves room for the value labels
+                    long["Room"] = long.groupby("Metric")["Score"].transform("max").clip(lower=0) * 1.15
+                    headroom = alt.Chart().mark_point(opacity=0).encode(y=alt.Y("Room:Q", title=None))
+                    chart = alt.layer(bars, labels, headroom, data=long).properties(width=int((600 - 70 * columns) / columns), height=170).facet(
+                        facet=alt.Facet("Metric:N", sort=metrics, title=None, header=alt.Header(labelFontSize=13, labelFontWeight="bold")),
+                        columns=columns).resolve_scale(y="independent")
+                    st.altair_chart(chart, use_container_width=False)
 
                     # Show ROC Curve as plot
                     if "AUC Score" in evaluation_metric:
